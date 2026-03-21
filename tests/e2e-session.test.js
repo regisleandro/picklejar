@@ -91,6 +91,47 @@ describe('e2e', () => {
     expect(matchers).toContain('startup');
   });
 
+  it('goal command sets session goal', async () => {
+    await runHook(
+      'post-tool-use',
+      {
+        session_id: 'goal-cli',
+        tool_name: 'Read',
+        tool_input: { file_path: 'x.ts' },
+        tool_response: 'ok',
+      },
+      { CLAUDE_PROJECT_DIR: proj },
+    );
+    const { code, out } = await runCli(['goal', 'Ship JWT auth', proj], process.cwd());
+    expect(code).toBe(0);
+    expect(out).toContain('Ship JWT auth');
+    const snap = await loadSnapshot(proj, 'goal-cli');
+    expect(snap?.session.goal).toBe('Ship JWT auth');
+  });
+
+  it('decide command appends to decisions', async () => {
+    await runHook(
+      'post-tool-use',
+      {
+        session_id: 'decide-cli',
+        tool_name: 'Read',
+        tool_input: { file_path: 'y.ts' },
+        tool_response: 'ok',
+      },
+      { CLAUDE_PROJECT_DIR: proj },
+    );
+    const { code, out } = await runCli(
+      ['decide', 'PostgreSQL', 'relational data', proj],
+      process.cwd(),
+    );
+    expect(code).toBe(0);
+    expect(out).toContain('PostgreSQL');
+    const snap = await loadSnapshot(proj, 'decide-cli');
+    expect(snap?.session.decisions).toHaveLength(1);
+    expect(snap?.session.decisions[0].description).toBe('PostgreSQL');
+    expect(snap?.session.decisions[0].reasoning).toBe('relational data');
+  });
+
   it('resume flag + session-start loads brain dump', async () => {
     await runHook(
       'post-tool-use',

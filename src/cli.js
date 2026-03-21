@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
-import { loadSnapshot, listSnapshots } from './core/snapshot.js';
+import { loadSnapshot, listSnapshots, saveSnapshot } from './core/snapshot.js';
 import { compileBrainDump } from './core/compiler.js';
 import { defaultConfig, loadConfig } from './core/config.js';
 import {
@@ -252,6 +252,44 @@ resumeCmd.action(async (dir) => {
       'utf8',
     );
     console.log(`Resume flag set for session ${sessionId}`);
+  });
+
+program
+  .command('goal')
+  .description('Set the goal on the latest session snapshot')
+  .argument('<text>', 'goal text')
+  .argument('[dir]', 'project directory', process.cwd())
+  .action(async (text, dir) => {
+    const projectDir = path.resolve(dir);
+    const loaded = await loadSnapshot(projectDir);
+    if (!loaded) {
+      console.error('No session found');
+      process.exitCode = 1;
+      return;
+    }
+    loaded.session.goal = text;
+    await saveSnapshot(loaded.session);
+    console.log(`Goal set on session ${loaded.session.sessionId}: ${text}`);
+  });
+
+program
+  .command('decide')
+  .description('Add an architecture decision to the latest session snapshot')
+  .argument('<description>', 'decision description')
+  .argument('<reasoning>', 'why this decision was made')
+  .argument('[dir]', 'project directory', process.cwd())
+  .action(async (description, reasoning, dir) => {
+    const projectDir = path.resolve(dir);
+    const loaded = await loadSnapshot(projectDir);
+    if (!loaded) {
+      console.error('No session found');
+      process.exitCode = 1;
+      return;
+    }
+    loaded.session.decisions = loaded.session.decisions ?? [];
+    loaded.session.decisions.push({ description, reasoning, timestamp: Date.now() });
+    await saveSnapshot(loaded.session);
+    console.log(`Decision added to session ${loaded.session.sessionId}: ${description}`);
   });
 
 const cleanCmd = program
