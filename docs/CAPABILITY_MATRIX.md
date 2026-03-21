@@ -1,21 +1,21 @@
-# Picklejar — matriz de capacidades por agente
+# Picklejar — capability matrix by agent
 
-Escopo atual: **sem OpenAI Codex** nesta rodada. Integrações variam entre **trilha hooks** (captura por tool) e **trilha instruções/sessão** (resume/contexto com menos granularidade).
+**Current scope:** OpenAI Codex is **out of scope** for this roadmap. Integrations split into a **hooks track** (per-tool capture) and an **instructions / session track** (resume/context with less granularity).
 
-| Agente | Trilha | Captura por tool | Session start / resume | Arquivo de instruções | `picklejar start` | Automação e2e |
-|--------|--------|------------------|-------------------------|------------------------|-------------------|---------------|
-| **Claude Code** | hooks | Sim (PostToolUse) | Sim (SessionStart + force-resume) | `CLAUDE.md` (resume injetado) | `claude` | Alta |
-| **Cursor** | hooks | Sim (`postToolUse`) | Sim (`sessionStart` + mesmo núcleo) | Opcional: compatível com `.claude/` | Abre IDE (documentado no README) | Média |
-| **Continue CLI** | hooks | Sim (Claude-compatible) | Sim | Via hooks em `.continue/settings.json` | `continue` / documentação | Média |
-| **GitHub Copilot CLI** | hooks | Sim (`postToolUse` quando disponível na sua versão) | Sim (`sessionStart`) | `.github/copilot-instructions.md` (recomendado) | `copilot` (se no PATH) | Média |
-| **Cline** | hooks | Sim (`PostToolUse`) | Sim (`TaskStart` / `TaskResume` → núcleo) | `.clinerules` + hooks | Extensão VS Code | Média |
-| **OpenCode** | instruções/sessão | Limitada (sem paridade PostToolUse estável no núcleo) | `resume` + `AGENTS.md` | `AGENTS.md` | `opencode` | Baixa–média |
-| **Kilo** | instruções/sessão | Idem OpenCode (CLI fork) | Idem | `AGENTS.md` | `kilo` | Baixa–média |
-| **Antigravity** | instruções/skills | MVP: sem hooks de tool documentados de forma estável | Injeção em `.agent/` | `.agent/picklejar-resume.md` | — (IDE) | Baixa |
-| **Aider** | instruções/sessão | Via convenções / fluxo manual | `resume` + arquivo de convenções | `CONVENTIONS.md` (opcional) | `aider` | Baixa |
+| Agent | Track | Per-tool capture | Session start / resume | Instructions file | `picklejar start` | E2E automation |
+|--------|--------|------------------|-------------------------|------------------------|-------------------|----------------|
+| **Claude Code** | hooks | Yes (PostToolUse) | Yes (SessionStart + force-resume) | `CLAUDE.md` (resume injected) | `claude` | High |
+| **Cursor** | hooks | Yes (`postToolUse`) | Yes (`sessionStart` + same core) | Optional: `.claude/` compatible | Launches IDE (see README) | Medium |
+| **Continue CLI** | hooks | Yes (Claude-compatible) | Yes | Via hooks in `.continue/settings.json` | `continue` / per docs | Medium |
+| **GitHub Copilot CLI** | hooks | Yes (`postToolUse` when available in your build) | Yes (`sessionStart`) | `.github/copilot-instructions.md` (recommended) | `copilot` (if on PATH) | Medium |
+| **Cline** | hooks | Yes (`PostToolUse`) | Yes (`TaskStart` / `TaskResume` → core) | `.clinerules` + hooks | VS Code extension | Medium |
+| **OpenCode** | instructions/session | Limited (no stable PostToolUse parity in core) | `resume` + `AGENTS.md` | `AGENTS.md` | `opencode` | Low–medium |
+| **Kilo** | instructions/session | Same as OpenCode (CLI fork) | Same as OpenCode | `AGENTS.md` | `kilo` | Low–medium |
+| **Antigravity** | instructions/skills | MVP: no stably documented tool hooks | Injection into `.agent/` | `.agent/picklejar-resume.md` | — (IDE) | Low |
+| **Aider** | instructions/session | Via conventions / manual flow | `resume` + conventions file | `CONVENTIONS.md` (optional) | `aider` | Low |
 
-## Notas
+## Notes
 
-- **Hooks** reutilizam ` .picklejar/hooks/run-hook.js` → scripts em `picklejar-agent` (`src/hooks/*`).
-- **Normalização**: `post-tool-use` aceita payloads estilo Claude, Cursor, Cline e JSON genérico (`tool_output`, `result`, etc.).
-- **Antigravity**: integração MVP focada em arquivo versionado em `.agent/`; evoluir quando houver API de hooks estável.
+- **Hooks** reuse `.picklejar/hooks/run-hook.js` → scripts shipped with `picklejar-agent` (`src/hooks/*`).
+- **Normalization:** `post-tool-use` accepts Claude-, Cursor-, and Cline-style payloads and generic JSON (`tool_output`, `result`, etc.).
+- **Antigravity:** MVP integration centered on a versioned file under `.agent/`; extend when a stable hooks API exists.
