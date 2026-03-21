@@ -17,8 +17,24 @@ describe('compiler', () => {
     });
     const md = compileBrainDump(s, { maxTokens: 50_000 });
     expect(md).toContain('Test goal');
-    expect(md).toContain('ÚLTIMAS AÇÕES');
+    expect(md).toContain('USER ORIGINAL INTENT');
+    expect(md).toContain('RECENT ACTIONS');
     expect(md).toContain('[PICKLEJAR RESUME]');
+  });
+
+  it('does not produce [object Object] when output/input are objects', () => {
+    const s = createSession('obj-test', '/tmp/p');
+    s.goal = 'Reproduce object bug';
+    addAction(s, {
+      id: '2',
+      timestamp: Date.now(),
+      toolName: 'Bash',
+      input: { command: 'ls' },
+      output: { content: [{ type: 'text', text: 'file.txt' }] },
+      relatedFiles: [],
+    });
+    const md = compileBrainDump(s, { maxTokens: 50_000 });
+    expect(md).not.toContain('[object Object]');
   });
 
   it('respects maxTokens roughly', () => {

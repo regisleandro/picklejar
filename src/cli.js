@@ -3,6 +3,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawn } from 'node:child_process';
 import { Command } from 'commander';
 import { loadSnapshot, listSnapshots, saveSnapshot } from './core/snapshot.js';
 import { compileBrainDump } from './core/compiler.js';
@@ -11,10 +12,12 @@ import {
   picklejarRoot,
   hooksTargetDir,
   forceResumePath,
+  resumeContextPath,
   snapshotsDir,
   transcriptsDir,
 } from './core/paths.js';
 import { runHookScript, claudeHooksBlock } from './core/init-templates.js';
+import { writeResumeToClaude } from './adapters/claude-code.js';
 
 function getPackageRoot() {
   const here = fileURLToPath(new URL('.', import.meta.url));
@@ -34,10 +37,11 @@ function hasPicklejarRunHook(hooks) {
 
 /**
  * @param {unknown} hooks
+ * @param {string} matcher
  */
-function hasStartupMatcher(hooks) {
+function hasSessionStartMatcher(hooks, matcher) {
   try {
-    return JSON.stringify(/** @type {any} */ (hooks)?.SessionStart ?? []).includes('"startup"');
+    return JSON.stringify(/** @type {any} */ (hooks)?.SessionStart ?? []).includes(`"${matcher}"`);
   } catch {
     return false;
   }
@@ -57,19 +61,33 @@ async function mergeClaudeSettings(projectDir) {
     /* new file */
   }
   existing.hooks = existing.hooks ?? {};
-  if (hasPicklejarRunHook(existing.hooks) && hasStartupMatcher(existing.hooks)) {
+
+  const hasHook = hasPicklejarRunHook(existing.hooks);
+  const hasStartup = hasSessionStartMatcher(existing.hooks, 'startup');
+  const hasCompact = hasSessionStartMatcher(existing.hooks, 'compact');
+
+  if (hasHook && hasStartup && hasCompact) {
     return false;
   }
+
   const block = claudeHooksBlock();
-  if (hasPicklejarRunHook(existing.hooks) && !hasStartupMatcher(existing.hooks)) {
-    // Partial merge: only add the missing startup entry
-    const startupEntries = block.SessionStart.filter((e) =>
-      JSON.stringify(e).includes('"startup"'),
-    );
-    existing.hooks.SessionStart = [...(existing.hooks.SessionStart ?? []), ...startupEntries];
-    await fs.writeFile(settingsPath, JSON.stringify(existing, null, 2), 'utf8');
-    return 'startup-added';
+
+  if (hasHook) {
+    // Partial merge: add only missing SessionStart matchers
+    const missingMatchers = block.SessionStart.filter((e) => {
+      const s = JSON.stringify(e);
+      if (!hasStartup && s.includes('"startup"')) return true;
+      if (!hasCompact && s.includes('"compact"')) return true;
+      return false;
+    });
+    if (missingMatchers.length > 0) {
+      existing.hooks.SessionStart = [...(existing.hooks.SessionStart ?? []), ...missingMatchers];
+      await fs.writeFile(settingsPath, JSON.stringify(existing, null, 2), 'utf8');
+      return 'matchers-added';
+    }
+    return false;
   }
+
   for (const [event, arr] of Object.entries(block)) {
     existing.hooks[event] = [...(existing.hooks[event] ?? []), ...arr];
   }
@@ -141,8 +159,8 @@ program
     await ensureGitignoreEntries(projectDir);
 
     console.log(`Picklejar initialized in ${projectDir}`);
-    if (merged === 'startup-added') {
-      console.log('Claude settings.json updated (startup matcher added to existing hooks).');
+    if (merged === 'matchers-added') {
+      console.log('Claude settings.json updated (missing SessionStart matchers added).');
     } else {
       console.log(merged ? 'Claude settings.json updated (hooks appended).' : 'Claude hooks already present; settings unchanged.');
     }
@@ -229,29 +247,75 @@ exportCmd.action(async (id, dir) => {
 
 const resumeCmd = program
   .command('resume')
-  .description('Force brain dump injection on next SessionStart (resume)')
-  .option('--id <id>', 'session id (default: latest any)')
+  .description('Prepare session resume: write brain dump and set force-resume flag')
+  .option('--id <id>', 'session id (default: latest)')
+  .argument('[id]', 'session id (positional)')
   .argument('[dir]', 'project directory', process.cwd());
 
-resumeCmd.action(async (dir) => {
+resumeCmd.action(async (idArg, dir) => {
+  const projectDir = path.resolve(dir);
+  let sessionId = idArg || resumeCmd.opts().id;
+  if (!sessionId) {
+    const rows = await listSnapshots(projectDir);
+    sessionId = rows.at(-1)?.sessionId;
+  }
+  if (!sessionId) {
+    console.error('No session id available');
+    process.exitCode = 1;
+    return;
+  }
+  const loaded = await loadSnapshot(projectDir, sessionId);
+  if (!loaded) {
+    console.error('Session not found');
+    process.exitCode = 1;
+    return;
+  }
+  const cfg = await loadConfig(projectDir);
+  const md = compileBrainDump(loaded.session, { maxTokens: cfg.maxTokens });
+
+  await fs.mkdir(picklejarRoot(projectDir), { recursive: true });
+  // Write agent-agnostic brain dump file
+  await fs.writeFile(resumeContextPath(projectDir), md, 'utf8');
+  // Write cleanup signal for the hook
+  await fs.writeFile(
+    forceResumePath(projectDir),
+    JSON.stringify({ sessionId, at: Date.now() }, null, 2),
+    'utf8',
+  );
+  console.log(`Resume prepared for session ${sessionId}`);
+  console.log(`Run: picklejar start claude`);
+});
+
+program
+  .command('start')
+  .description('Start an agent with resumed session context injected')
+  .argument('[agent]', 'agent to start (default: claude)', 'claude')
+  .argument('[dir]', 'project directory', process.cwd())
+  .action(async (agent, dir) => {
     const projectDir = path.resolve(dir);
-    let sessionId = resumeCmd.opts().id;
-    if (!sessionId) {
-      const rows = await listSnapshots(projectDir);
-      sessionId = rows.at(-1)?.sessionId;
-    }
-    if (!sessionId) {
-      console.error('No session id available');
+    if (agent === 'claude') {
+      const ctxPath = resumeContextPath(projectDir);
+      let hasContext = false;
+      try {
+        await fs.access(ctxPath);
+        hasContext = true;
+      } catch { /* no context */ }
+
+      if (hasContext) {
+        const brainDump = await fs.readFile(ctxPath, 'utf8');
+        await writeResumeToClaude(projectDir, brainDump);
+        console.log('Brain dump injected into CLAUDE.md — starting claude...');
+      }
+
+      const child = spawn('claude', [], { stdio: 'inherit', cwd: projectDir });
+      child.on('exit', (code, signal) => {
+        if (signal) process.kill(process.pid, signal);
+        process.exit(code ?? 0);
+      });
+    } else {
+      console.error(`Agent '${agent}' not yet supported. Available: claude`);
       process.exitCode = 1;
-      return;
     }
-    await fs.mkdir(picklejarRoot(projectDir), { recursive: true });
-    await fs.writeFile(
-      forceResumePath(projectDir),
-      JSON.stringify({ sessionId, at: Date.now() }, null, 2),
-      'utf8',
-    );
-    console.log(`Resume flag set for session ${sessionId}`);
   });
 
 program

@@ -13,6 +13,7 @@ import { saveSnapshot, shortHash } from '../core/snapshot.js';
 import { loadConfig } from '../core/config.js';
 import { redactWithPatterns } from '../core/redact.js';
 import { truncateBashOutput, truncateResponse } from '../core/truncate.js';
+import { extractGoalFromTranscript } from '../core/transcript.js';
 import { readStdinJson, getProjectDir, logErr } from './_lib.js';
 
 /**
@@ -110,9 +111,10 @@ async function main() {
   const toolInput =
     (/** @type {any} */ (payload).tool_input ?? /** @type {any} */ (payload).toolInput ?? {}) ||
     {};
-  let toolResponse = String(
-    /** @type {any} */ (payload).tool_response ?? /** @type {any} */ (payload).toolResponse ?? '',
-  );
+  const rawResponse =
+    /** @type {any} */ (payload).tool_response ?? /** @type {any} */ (payload).toolResponse ?? '';
+  let toolResponse =
+    typeof rawResponse === 'string' ? rawResponse : JSON.stringify(rawResponse);
 
   const cfg = await loadConfig(projectDir);
   toolResponse = redactWithPatterns(toolResponse, cfg.redactPatterns);
@@ -140,6 +142,14 @@ async function main() {
   addAction(session, action);
   updateTaskTree(session, action);
   applyActiveFiles(session, toolName, action.input, toolResponse);
+
+  if (!session.goal) {
+    const tp = session.transcriptPath;
+    if (typeof tp === 'string' && tp) {
+      const goal = await extractGoalFromTranscript(tp);
+      if (goal) session.goal = goal;
+    }
+  }
 
   await saveSnapshot(session);
 }

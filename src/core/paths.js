@@ -29,3 +29,8 @@ export function configPath(projectDir) {
 export function forceResumePath(projectDir) {
   return path.join(picklejarRoot(projectDir), 'force-resume.json');
 }
+
+/** @param {string} projectDir */
+export function resumeContextPath(projectDir) {
+  return path.join(picklejarRoot(projectDir), 'resume-context.md');
+}

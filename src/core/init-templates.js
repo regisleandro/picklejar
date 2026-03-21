@@ -41,6 +41,15 @@ export function claudeHooksBlock() {
         ],
       },
       {
+        matcher: 'compact',
+        hooks: [
+          {
+            type: 'command',
+            command: `${run} session-start`,
+          },
+        ],
+      },
+      {
         matcher: 'startup',
         hooks: [
           {

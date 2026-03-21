@@ -6,6 +6,7 @@ import { saveSnapshot } from '../core/snapshot.js';
 import { compileBrainDump } from '../core/compiler.js';
 import { loadConfig } from '../core/config.js';
 import { forceResumePath } from '../core/paths.js';
+import { cleanResumeFromClaude } from '../adapters/claude-code.js';
 import { extractGoalFromTranscript } from '../core/transcript.js';
 import { readStdinJson, getProjectDir, logErr } from './_lib.js';
 
@@ -67,15 +68,21 @@ async function main() {
     return;
   }
 
-  const md = compileBrainDump(session, { maxTokens: cfg.maxTokens });
-  process.stdout.write(JSON.stringify({ additionalContext: md }));
+  // For startup source: additionalContext doesn't work in Claude Code.
+  // Context was injected via CLAUDE.md by `picklejar start` — just clean up.
+  // For resume/compact sources: additionalContext works, use it.
+  if (source === 'startup') {
+    process.stdout.write(JSON.stringify({}));
+  } else {
+    const md = compileBrainDump(session, { maxTokens: cfg.maxTokens });
+    process.stdout.write(JSON.stringify({ additionalContext: md }));
+  }
 
   if (force) {
     try {
       await fs.unlink(forceResumePath(projectDir));
-    } catch {
-      /* ignore */
-    }
+    } catch { /* ignore */ }
+    await cleanResumeFromClaude(projectDir);
   }
 }
 

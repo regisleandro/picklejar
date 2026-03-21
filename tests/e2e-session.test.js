@@ -85,10 +85,11 @@ describe('e2e', () => {
     await fs.writeFile(settingsPath, JSON.stringify(oldSettings, null, 2), 'utf8');
     const { code, out } = await runCli(['init', proj], process.cwd());
     expect(code).toBe(0);
-    expect(out).toContain('startup matcher added');
+    expect(out).toContain('missing SessionStart matchers added');
     const updated = JSON.parse(await fs.readFile(settingsPath, 'utf8'));
     const matchers = updated.hooks.SessionStart.map((e) => e.matcher);
     expect(matchers).toContain('startup');
+    expect(matchers).toContain('compact');
   });
 
   it('goal command sets session goal', async () => {
@@ -143,8 +144,15 @@ describe('e2e', () => {
       },
       { CLAUDE_PROJECT_DIR: proj },
     );
-    const { code } = await runCli(['resume', '--id', 'e2e1', proj], process.cwd());
+    const { code } = await runCli(['resume', 'e2e1', proj], process.cwd());
     expect(code).toBe(0);
+
+    // Brain dump written to resume-context.md (agent-agnostic)
+    const ctxPath = path.join(proj, '.picklejar', 'resume-context.md');
+    const ctxContent = await fs.readFile(ctxPath, 'utf8');
+    expect(ctxContent).toContain('[PICKLEJAR RESUME]');
+
+    // startup source: no additionalContext (injected via CLAUDE.md by `picklejar start`)
     const { code: c2, stdout } = await runHook(
       'session-start',
       { source: 'startup', session_id: 'e2e1' },
@@ -152,7 +160,8 @@ describe('e2e', () => {
     );
     expect(c2).toBe(0);
     const parsed = JSON.parse(stdout);
-    expect(parsed.additionalContext).toBeDefined();
+    expect(parsed.additionalContext).toBeUndefined();
+
     const snap = await loadSnapshot(proj, 'e2e1');
     expect(snap?.session.actions[0].output.split('\n').length).toBeLessThan(600);
   });
