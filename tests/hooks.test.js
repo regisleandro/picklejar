@@ -103,6 +103,20 @@ describe('hooks', () => {
     expect(snap?.session.ended).toBe(true);
   });
 
+  it('session-start extracts goal from transcript on startup', async () => {
+    const transcriptPath = path.join(tmpDir, 'transcript.jsonl');
+    const userLine = JSON.stringify({ role: 'user', content: 'Implement JWT authentication' });
+    await fs.writeFile(transcriptPath, userLine + '\n', 'utf8');
+    const { code } = await runHook(
+      'session-start',
+      { source: 'startup', session_id: 'goal-test', transcript_path: transcriptPath },
+      { CLAUDE_PROJECT_DIR: tmpDir, PICKLEJAR_PROJECT_DIR: tmpDir },
+    );
+    expect(code).toBe(0);
+    const snap = await loadSnapshot(tmpDir, 'goal-test');
+    expect(snap?.session.goal).toBe('Implement JWT authentication');
+  });
+
   it('session-start returns additionalContext on resume', async () => {
     await runHook(
       'post-tool-use',

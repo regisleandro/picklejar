@@ -6,6 +6,7 @@ import { saveSnapshot } from '../core/snapshot.js';
 import { compileBrainDump } from '../core/compiler.js';
 import { loadConfig } from '../core/config.js';
 import { forceResumePath } from '../core/paths.js';
+import { extractGoalFromTranscript } from '../core/transcript.js';
 import { readStdinJson, getProjectDir, logErr } from './_lib.js';
 
 /**
@@ -41,8 +42,12 @@ async function main() {
       session = createSession(sessionIdFromPayload, projectDir);
       const tp = /** @type {any} */ (payload).transcript_path ?? /** @type {any} */ (payload).transcriptPath;
       if (typeof tp === 'string') session.transcriptPath = tp;
-      await saveSnapshot(session, 'startup');
     }
+    if (!session.goal && session.transcriptPath) {
+      const goal = await extractGoalFromTranscript(session.transcriptPath);
+      if (goal) session.goal = goal;
+    }
+    await saveSnapshot(session, 'startup');
   }
 
   if (!shouldInject) {
