@@ -1,6 +1,8 @@
 # picklejar-agent
 
-Persist **Claude Code** sessions using **native hooks** (no HTTP proxy). Each tool call is saved incrementally to `.picklejar/snapshots/`; on resume, a **Brain Dump** (Markdown) can be injected as `additionalContext`.
+Persist AI agent sessions using **native hooks** (no HTTP proxy). Each tool call is saved incrementally to `.picklejar/snapshots/`; on resume, a **Brain Dump** (Markdown) is injected into the agent's context via an agent-specific adapter.
+
+Currently supports **Claude Code**. Designed to accommodate other agents (Cursor, Aider, Gemini CLI, etc.) via the adapter layer in `src/adapters/`.
 
 ## Requirements
 
@@ -30,6 +32,20 @@ This creates:
 
 Hook commands use `$CLAUDE_PROJECT_DIR/.picklejar/hooks/run-hook.js`, which runs the real scripts inside the installed package (so imports keep working).
 
+## Resuming a session
+
+```bash
+# 1. Prepare the resume (compiles brain dump, writes resume-context.md)
+picklejar resume [id]
+
+# 2. Start the agent with context injected
+picklejar start claude
+```
+
+`picklejar start claude` writes the brain dump into `CLAUDE.md` (wrapped in markers), spawns `claude`, and the `SessionStart` hook cleans up the injected section once the session is underway.
+
+> **Why two steps?** `additionalContext` from Claude Code's `SessionStart` hook is not injected for new (`startup`) sessions — only for `resume` and `compact` sources. Writing to `CLAUDE.md` before the agent starts is the reliable path for new sessions.
+
 ## CLI
 
 | Command | Description |
@@ -39,7 +55,10 @@ Hook commands use `$CLAUDE_PROJECT_DIR/.picklejar/hooks/run-hook.js`, which runs
 | `picklejar list [dir]` | List snapshot files |
 | `picklejar inspect <id> [dir]` | Pretty-print session JSON |
 | `picklejar export <id> [dir] [-o file.md]` | Write Brain Dump markdown |
-| `picklejar resume [--id <id>] [dir]` | Write `force-resume.json` so next `SessionStart` injects the dump |
+| `picklejar resume [id] [dir]` | Compile brain dump and write `resume-context.md` + `force-resume.json` |
+| `picklejar start [agent] [dir]` | Inject context and start the agent (`claude` supported) |
+| `picklejar goal <text> [dir]` | Set the goal on the latest session snapshot |
+| `picklejar decide <description> <reasoning> [dir]` | Record an architecture decision |
 | `picklejar clean [--keep N] [dir]` | Prune old snapshots per session |
 
 ## Configuration
@@ -55,9 +74,18 @@ Hook commands use `$CLAUDE_PROJECT_DIR/.picklejar/hooks/run-hook.js`, which runs
 2. **Stop** — checkpoint + best-effort `lastPlannedAction` from the transcript tail.
 3. **PreCompact** — safety snapshot + transcript copy under `.picklejar/transcripts/`.
 4. **SessionEnd** — marks session `ended` and snapshots.
-5. **SessionStart** (`matcher: resume`) — loads the latest snapshot (or the one from `picklejar resume`) and returns `{ additionalContext: "<markdown>" }`.
+5. **SessionStart** (`matcher: startup`) — saves a snapshot for new sessions; if `force-resume.json` exists, cleans up the `CLAUDE.md` resume section.
+6. **SessionStart** (`matcher: resume|compact`) — loads the target snapshot and returns `{ additionalContext: "<markdown>" }` for context injection.
 
 Snapshots are **msgpack** with a small header + **CRC32**; corrupted latest files fall back to the previous snapshot.
+
+## Adapter architecture
+
+Agent-specific context injection lives in `src/adapters/`:
+
+- `claude-code.js` — writes/cleans the `<!-- PICKLEJAR RESUME START/END -->` section in `CLAUDE.md`
+
+To add support for another agent, create `src/adapters/<agent>.js` and wire it into the `start` command.
 
 ## Development
 
