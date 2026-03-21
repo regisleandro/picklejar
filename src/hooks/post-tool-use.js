@@ -14,7 +14,8 @@ import { loadConfig } from '../core/config.js';
 import { redactWithPatterns } from '../core/redact.js';
 import { truncateBashOutput, truncateResponse } from '../core/truncate.js';
 import { extractGoalFromTranscript } from '../core/transcript.js';
-import { readStdinJson, getProjectDir, logErr } from './_lib.js';
+import { readStdinJson, getProjectDir, getTranscriptPathFromEnv, logErr } from './_lib.js';
+import { normalizePostToolUsePayload } from '../core/normalize-payload.js';
 
 /**
  * @param {Record<string, unknown>} input
@@ -84,41 +85,39 @@ function applyActiveFiles(session, toolName, input, output) {
     ),
   );
   const now = Date.now();
-  if (/read/i.test(tn) && rel) {
+  if ((/read/i.test(tn) || /read_file|list_files|search_files/i.test(tn)) && rel) {
     upsertActiveFile(session, rel, output, now, 'read');
   }
-  if ((/write/i.test(tn) || /edit/i.test(tn) || /multiedit/i.test(tn)) && rel) {
+  if (
+    (/write/i.test(tn) ||
+      /edit/i.test(tn) ||
+      /multiedit/i.test(tn) ||
+      /write_to_file|apply_diff|delete_file/i.test(tn)) &&
+    rel
+  ) {
     const content = String(
       /** @type {any} */ (input).new_string ??
         /** @type {any} */ (input).content ??
         /** @type {any} */ (input).after ??
         output,
     ).slice(0, 500_000);
-    const lastAction = /edit|multiedit/i.test(tn) ? 'edit' : 'write';
+    const lastAction = /edit|multiedit|apply_diff/i.test(tn) ? 'edit' : 'write';
     upsertActiveFile(session, rel, content, now, lastAction);
   }
 }
 
 async function main() {
   const projectDir = getProjectDir();
-  const payload = await readStdinJson();
-  const sessionId = String(
-    /** @type {any} */ (payload).session_id ?? /** @type {any} */ (payload).sessionId ?? 'unknown',
-  );
-  const toolName = String(
-    /** @type {any} */ (payload).tool_name ?? /** @type {any} */ (payload).toolName ?? 'unknown',
-  );
-  const toolInput =
-    (/** @type {any} */ (payload).tool_input ?? /** @type {any} */ (payload).toolInput ?? {}) ||
-    {};
-  const rawResponse =
-    /** @type {any} */ (payload).tool_response ?? /** @type {any} */ (payload).toolResponse ?? '';
-  let toolResponse =
-    typeof rawResponse === 'string' ? rawResponse : JSON.stringify(rawResponse);
+  const rawPayload = await readStdinJson();
+  const payload = normalizePostToolUsePayload(rawPayload);
+  const sessionId = payload.sessionId;
+  const toolName = payload.toolName;
+  const toolInput = payload.toolInput;
+  let toolResponse = payload.toolResponse;
 
   const cfg = await loadConfig(projectDir);
   toolResponse = redactWithPatterns(toolResponse, cfg.redactPatterns);
-  if (/bash/i.test(toolName)) {
+  if (/bash|execute_command|shell/i.test(toolName)) {
     toolResponse = truncateBashOutput(toolResponse);
   } else {
     toolResponse = truncateResponse(toolResponse);
@@ -127,7 +126,11 @@ async function main() {
   let session = await loadSession(projectDir, sessionId);
   if (!session) session = createSession(sessionId, projectDir);
 
-  const tp = /** @type {any} */ (payload).transcript_path ?? /** @type {any} */ (payload).transcriptPath;
+  const tp =
+    payload.transcriptPath ??
+    /** @type {any} */ (rawPayload).transcript_path ??
+    /** @type {any} */ (rawPayload).transcriptPath ??
+    getTranscriptPathFromEnv();
   if (typeof tp === 'string') session.transcriptPath = tp;
 
   const action = {

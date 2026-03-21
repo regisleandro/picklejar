@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getProjectDirFromEnv, getTranscriptPathFromEnv as transcriptFromEnv } from '../core/env.js';
 
 /**
  * @returns {Promise<string>}
@@ -22,13 +23,12 @@ export async function readStdinJson() {
   return JSON.parse(raw);
 }
 
-/**
- * Claude Code sets CLAUDE_PROJECT_DIR; fall back to cwd.
- */
 export function getProjectDir() {
-  const fromEnv = process.env.CLAUDE_PROJECT_DIR ?? process.env.PICKLEJAR_PROJECT_DIR;
-  if (fromEnv) return path.resolve(fromEnv);
-  return process.cwd();
+  return getProjectDirFromEnv();
+}
+
+export function getTranscriptPathFromEnv() {
+  return transcriptFromEnv();
 }
 
 /**

@@ -6,9 +6,10 @@ import { saveSnapshot } from '../core/snapshot.js';
 import { compileBrainDump } from '../core/compiler.js';
 import { loadConfig } from '../core/config.js';
 import { forceResumePath } from '../core/paths.js';
-import { cleanResumeFromClaude } from '../adapters/claude-code.js';
+import { cleanAllResumeInjections } from '../adapters/resume-cleanup.js';
 import { extractGoalFromTranscript } from '../core/transcript.js';
 import { readStdinJson, getProjectDir, logErr } from './_lib.js';
+import { mapSessionStartPayload } from '../core/session-start-map.js';
 
 /**
  * @returns {Promise<{ sessionId?: string } | null>}
@@ -22,15 +23,24 @@ async function readForceResume(projectDir) {
   }
 }
 
+/**
+ * @param {string} md
+ */
+function writeContextOutput(md) {
+  process.stdout.write(
+    JSON.stringify({
+      additionalContext: md,
+      additional_context: md,
+    }),
+  );
+}
+
 async function main() {
   const projectDir = getProjectDir();
-  const payload = await readStdinJson();
-  const source = String(
-    /** @type {any} */ (payload).source ?? /** @type {any} */ (payload).Source ?? 'startup',
-  ).toLowerCase();
-  const sessionIdFromPayload = String(
-    /** @type {any} */ (payload).session_id ?? /** @type {any} */ (payload).sessionId ?? '',
-  );
+  const raw = await readStdinJson();
+  const mapped = mapSessionStartPayload(raw);
+  const source = mapped.source;
+  const sessionIdFromPayload = mapped.sessionId;
   const cfg = await loadConfig(projectDir);
   const force = await readForceResume(projectDir);
 
@@ -41,7 +51,7 @@ async function main() {
     let session = await loadSession(projectDir, sessionIdFromPayload);
     if (!session) {
       session = createSession(sessionIdFromPayload, projectDir);
-      const tp = /** @type {any} */ (payload).transcript_path ?? /** @type {any} */ (payload).transcriptPath;
+      const tp = mapped.transcriptPath;
       if (typeof tp === 'string') session.transcriptPath = tp;
     }
     if (!session.goal && session.transcriptPath) {
@@ -69,20 +79,22 @@ async function main() {
   }
 
   // For startup source: additionalContext doesn't work in Claude Code.
-  // Context was injected via CLAUDE.md by `picklejar start` — just clean up.
-  // For resume/compact sources: additionalContext works, use it.
+  // Context was injected via instruction files by `picklejar start` — just clean up.
+  // For resume/compact sources: inject via hook output (Claude, Cursor, Continue).
   if (source === 'startup') {
     process.stdout.write(JSON.stringify({}));
   } else {
     const md = compileBrainDump(session, { maxTokens: cfg.maxTokens });
-    process.stdout.write(JSON.stringify({ additionalContext: md }));
+    writeContextOutput(md);
   }
 
   if (force) {
     try {
       await fs.unlink(forceResumePath(projectDir));
-    } catch { /* ignore */ }
-    await cleanResumeFromClaude(projectDir);
+    } catch {
+      /* ignore */
+    }
+    await cleanAllResumeInjections(projectDir);
   }
 }
 

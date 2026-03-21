@@ -3,13 +3,12 @@
 import { loadSession } from '../core/state.js';
 import { saveSnapshot } from '../core/snapshot.js';
 import { readStdinJson, getProjectDir, logErr } from './_lib.js';
+import { resolveSessionIdFromPayload } from '../core/normalize-payload.js';
 
 async function main() {
   const projectDir = getProjectDir();
   const payload = await readStdinJson();
-  const sessionId = String(
-    /** @type {any} */ (payload).session_id ?? /** @type {any} */ (payload).sessionId ?? '',
-  );
+  const sessionId = resolveSessionIdFromPayload(payload);
   if (!sessionId) return;
 
   const session = await loadSession(projectDir, sessionId);

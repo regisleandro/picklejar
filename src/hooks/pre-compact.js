@@ -6,6 +6,7 @@ import { loadSession, createSession } from '../core/state.js';
 import { saveSnapshot } from '../core/snapshot.js';
 import { transcriptsDir } from '../core/paths.js';
 import { readStdinJson, getProjectDir, logErr } from './_lib.js';
+import { resolveSessionIdFromPayload } from '../core/normalize-payload.js';
 
 async function backupTranscript(projectDir, sessionId, transcriptPath) {
   if (!transcriptPath) return;
@@ -25,9 +26,7 @@ async function backupTranscript(projectDir, sessionId, transcriptPath) {
 async function main() {
   const projectDir = getProjectDir();
   const payload = await readStdinJson();
-  const sessionId = String(
-    /** @type {any} */ (payload).session_id ?? /** @type {any} */ (payload).sessionId ?? '',
-  );
+  const sessionId = resolveSessionIdFromPayload(payload);
   const transcriptPath =
     /** @type {any} */ (payload).transcript_path ?? /** @type {any} */ (payload).transcriptPath;
 
