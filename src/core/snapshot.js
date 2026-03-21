@@ -148,16 +148,32 @@ export async function listSnapshotFiles(projectDir, sessionId) {
  * @returns {Promise<{ file: string, type: string, savedAt: number, session: PicklejarSession } | null>}
  */
 export async function loadSnapshot(projectDir, sessionId) {
-  const files = await listSnapshotFiles(projectDir, sessionId);
-  for (let i = files.length - 1; i >= 0; i -= 1) {
-    const file = files[i];
+  if (sessionId) {
+    const files = await listSnapshotFiles(projectDir, sessionId);
+    for (let i = files.length - 1; i >= 0; i -= 1) {
+      const file = files[i];
+      const full = path.join(snapshotsDir(projectDir), file);
+      try {
+        const buf = await fs.readFile(full);
+        const decoded = decodeSnapshot(buf);
+        return { file, ...decoded };
+      } catch {
+        /* try previous */
+      }
+    }
+    return null;
+  }
+
+  const rows = await listSnapshots(projectDir);
+  for (let i = rows.length - 1; i >= 0; i -= 1) {
+    const file = rows[i].file;
     const full = path.join(snapshotsDir(projectDir), file);
     try {
       const buf = await fs.readFile(full);
       const decoded = decodeSnapshot(buf);
       return { file, ...decoded };
     } catch {
-      // try previous file
+      /* try previous */
     }
   }
   return null;
