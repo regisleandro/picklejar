@@ -1,0 +1,36 @@
+{
+  "name": "picklejar-agent",
+  "version": "0.1.0",
+  "description": "Persist Claude Code sessions via native hooks — snapshots and brain-dump resume",
+  "type": "module",
+  "bin": {
+    "picklejar": "./src/cli.js"
+  },
+  "main": "./src/cli.js",
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "hooks",
+    "session",
+    "snapshot"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "msgpackr": "^1.11.2",
+    "proper-lockfile": "^4.1.2"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.9"
+  }
+}
