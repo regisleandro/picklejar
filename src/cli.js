@@ -33,6 +33,17 @@ function hasPicklejarRunHook(hooks) {
 }
 
 /**
+ * @param {unknown} hooks
+ */
+function hasStartupMatcher(hooks) {
+  try {
+    return JSON.stringify(/** @type {any} */ (hooks)?.SessionStart ?? []).includes('"startup"');
+  } catch {
+    return false;
+  }
+}
+
+/**
  * @param {string} projectDir
  */
 async function mergeClaudeSettings(projectDir) {
@@ -46,10 +57,19 @@ async function mergeClaudeSettings(projectDir) {
     /* new file */
   }
   existing.hooks = existing.hooks ?? {};
-  if (hasPicklejarRunHook(existing.hooks)) {
+  if (hasPicklejarRunHook(existing.hooks) && hasStartupMatcher(existing.hooks)) {
     return false;
   }
   const block = claudeHooksBlock();
+  if (hasPicklejarRunHook(existing.hooks) && !hasStartupMatcher(existing.hooks)) {
+    // Partial merge: only add the missing startup entry
+    const startupEntries = block.SessionStart.filter((e) =>
+      JSON.stringify(e).includes('"startup"'),
+    );
+    existing.hooks.SessionStart = [...(existing.hooks.SessionStart ?? []), ...startupEntries];
+    await fs.writeFile(settingsPath, JSON.stringify(existing, null, 2), 'utf8');
+    return 'startup-added';
+  }
   for (const [event, arr] of Object.entries(block)) {
     existing.hooks[event] = [...(existing.hooks[event] ?? []), ...arr];
   }
@@ -121,7 +141,11 @@ program
     await ensureGitignoreEntries(projectDir);
 
     console.log(`Picklejar initialized in ${projectDir}`);
-    console.log(merged ? 'Claude settings.json updated (hooks appended).' : 'Claude hooks already present; settings unchanged.');
+    if (merged === 'startup-added') {
+      console.log('Claude settings.json updated (startup matcher added to existing hooks).');
+    } else {
+      console.log(merged ? 'Claude settings.json updated (hooks appended).' : 'Claude hooks already present; settings unchanged.');
+    }
   });
 
 program

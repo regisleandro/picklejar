@@ -40,6 +40,15 @@ export function claudeHooksBlock() {
           },
         ],
       },
+      {
+        matcher: 'startup',
+        hooks: [
+          {
+            type: 'command',
+            command: `${run} session-start`,
+          },
+        ],
+      },
     ],
     PostToolUse: [
       {

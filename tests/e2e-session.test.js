@@ -55,7 +55,7 @@ afterEach(async () => {
 });
 
 describe('e2e', () => {
-  it('init creates run-hook and settings', async () => {
+  it('init creates run-hook and settings with both resume and startup matchers', async () => {
     const { code, err } = await runCli(['init', proj], process.cwd());
     expect(code).toBe(0);
     expect(err).toBe('');
@@ -63,6 +63,32 @@ describe('e2e', () => {
     await fs.access(rh);
     const settings = JSON.parse(await fs.readFile(path.join(proj, '.claude', 'settings.json'), 'utf8'));
     expect(settings.hooks.PostToolUse).toBeDefined();
+    const sessionStartMatchers = settings.hooks.SessionStart.map((e) => e.matcher);
+    expect(sessionStartMatchers).toContain('resume');
+    expect(sessionStartMatchers).toContain('startup');
+  });
+
+  it('init upgrades existing hooks adding startup matcher if missing', async () => {
+    // Simulate old installation with only 'resume' matcher
+    const settingsPath = path.join(proj, '.claude', 'settings.json');
+    await fs.mkdir(path.dirname(settingsPath), { recursive: true });
+    const oldSettings = {
+      hooks: {
+        SessionStart: [
+          {
+            matcher: 'resume',
+            hooks: [{ type: 'command', command: `node ${proj}/.picklejar/hooks/run-hook.js session-start` }],
+          },
+        ],
+      },
+    };
+    await fs.writeFile(settingsPath, JSON.stringify(oldSettings, null, 2), 'utf8');
+    const { code, out } = await runCli(['init', proj], process.cwd());
+    expect(code).toBe(0);
+    expect(out).toContain('startup matcher added');
+    const updated = JSON.parse(await fs.readFile(settingsPath, 'utf8'));
+    const matchers = updated.hooks.SessionStart.map((e) => e.matcher);
+    expect(matchers).toContain('startup');
   });
 
   it('resume flag + session-start loads brain dump', async () => {
