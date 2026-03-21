@@ -1,7 +1,7 @@
 {
   "name": "picklejar-agent",
   "version": "0.1.0",
-  "description": "Persist Claude Code sessions via native hooks — snapshots and brain-dump resume",
+  "description": "Persist AI coding agent sessions via hooks — snapshots and brain-dump resume (multi-agent)",
   "type": "module",
   "bin": {
     "picklejar": "./src/cli.js"
@@ -17,6 +17,11 @@
   "keywords": [
     "claude",
     "claude-code",
+    "cursor",
+    "copilot",
+    "cline",
+    "continue",
+    "opencode",
     "hooks",
     "session",
     "snapshot"

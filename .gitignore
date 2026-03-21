@@ -1,6 +1,7 @@
 node_modules/
 .DS_Store
 coverage/
+.picklejar-e2e-*/
 *.log
 .picklejar/snapshots/
 .picklejar/transcripts/

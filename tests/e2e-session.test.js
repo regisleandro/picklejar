@@ -47,7 +47,8 @@ function runHook(name, json, env) {
 let proj;
 
 beforeEach(async () => {
-  proj = await fs.mkdtemp(path.join(os.tmpdir(), 'picklejar-e2e-'));
+  // Keep under repo root so environments that block `.cursor` in system temp still pass CI/sandbox.
+  proj = await fs.mkdtemp(path.join(root, '.picklejar-e2e-'));
 });
 
 afterEach(async () => {
@@ -55,6 +56,31 @@ afterEach(async () => {
 });
 
 describe('e2e', () => {
+  it('init continue merges .continue/settings.json with picklejar run-hook', async () => {
+    const { code, err } = await runCli(['init', 'continue', proj], process.cwd());
+    expect(code).toBe(0);
+    expect(err).toBe('');
+    const settingsPath = path.join(proj, '.continue', 'settings.json');
+    const raw = JSON.parse(await fs.readFile(settingsPath, 'utf8'));
+    expect(JSON.stringify(raw)).toContain('.picklejar/hooks/run-hook.js');
+    expect(raw.hooks.PostToolUse).toBeDefined();
+  });
+
+  it('init cline writes hook scripts under .clinerules/hooks', async () => {
+    const { code, err } = await runCli(['init', 'cline', proj], process.cwd());
+    expect(code).toBe(0);
+    expect(err).toBe('');
+    const postTool = path.join(proj, '.clinerules', 'hooks', 'PostToolUse');
+    const content = await fs.readFile(postTool, 'utf8');
+    expect(content).toContain('post-tool-use');
+  });
+
+  it('capabilities prints JSON', async () => {
+    const { code, out } = await runCli(['capabilities', 'claude'], process.cwd());
+    expect(code).toBe(0);
+    expect(out).toContain('"hooks"');
+  });
+
   it('init creates run-hook and settings with both resume and startup matchers', async () => {
     const { code, err } = await runCli(['init', proj], process.cwd());
     expect(code).toBe(0);
