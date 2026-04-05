@@ -13,6 +13,24 @@ export const DEFAULT_BRAIN_DUMP_SECTIONS = Object.freeze({
   resumeInstructions: true,
 });
 
+const EXCLUDED_CURATION_STATUSES = new Set([
+  'discarded',
+  'hallucinated',
+  'inconsistent',
+  'dead_end',
+]);
+
+function actionIsExcludedByCuration(action) {
+  if (action.includeInBrainDump === false) return true;
+  return EXCLUDED_CURATION_STATUSES.has(action.curationStatus ?? 'default');
+}
+
+function actionPriority(action) {
+  if (action.curationStatus === 'confirmed') return 3;
+  if (actionIsExcludedByCuration(action)) return 0;
+  return 2;
+}
+
 /**
  * Very rough token estimate for budgeting output size.
  * @param {string} s
@@ -43,7 +61,7 @@ function actionSummary(action) {
 }
 
 /**
- * @param {{ sections?: Partial<typeof DEFAULT_BRAIN_DUMP_SECTIONS>, excludeActionIndexes?: number[] }} [opts]
+ * @param {{ sections?: Partial<typeof DEFAULT_BRAIN_DUMP_SECTIONS>, excludeActionIndexes?: number[], ignoreCuration?: boolean }} [opts]
  */
 export function normalizeBrainDumpOptions(opts = {}) {
   const sections = {
@@ -53,19 +71,24 @@ export function normalizeBrainDumpOptions(opts = {}) {
   const excludeActionIndexes = [...new Set((opts.excludeActionIndexes ?? [])
     .map((n) => Number(n))
     .filter((n) => Number.isInteger(n) && n > 0))].sort((a, b) => a - b);
-  return { sections, excludeActionIndexes };
+  return { sections, excludeActionIndexes, ignoreCuration: Boolean(opts.ignoreCuration) };
 }
 
 /**
  * @param {PicklejarSession} session
- * @param {{ excludeActionIndexes?: number[] }} [opts]
+ * @param {{ excludeActionIndexes?: number[], ignoreCuration?: boolean }} [opts]
  */
 function filterSessionActions(session, opts = {}) {
   const exclude = new Set(opts.excludeActionIndexes ?? []);
-  if (exclude.size === 0) return session;
+  const ignoreCuration = Boolean(opts.ignoreCuration);
+  if (exclude.size === 0 && ignoreCuration) return session;
   return {
     ...session,
-    actions: (session.actions ?? []).filter((_action, idx) => !exclude.has(idx + 1)),
+    actions: (session.actions ?? []).filter((action, idx) => {
+      if (exclude.has(idx + 1)) return false;
+      if (!ignoreCuration && actionIsExcludedByCuration(action)) return false;
+      return true;
+    }),
   };
 }
 
@@ -116,8 +139,8 @@ function formatTaskTree(session) {
  */
 export function compileBrainDump(session, opts = {}) {
   const maxTokens = opts.maxTokens ?? 30_000;
-  const { sections, excludeActionIndexes } = normalizeBrainDumpOptions(opts);
-  const filteredSession = filterSessionActions(session, { excludeActionIndexes });
+  const { sections, excludeActionIndexes, ignoreCuration } = normalizeBrainDumpOptions(opts);
+  const filteredSession = filterSessionActions(session, { excludeActionIndexes, ignoreCuration });
   const lines = [];
 
   lines.push(`# [PICKLEJAR RESUME] Session ${filteredSession.sessionId}`);
@@ -252,8 +275,10 @@ function trimToTokenBudget(session, maxTokens, sections) {
   }
 
   const actions = session.actions ?? [];
-  const detailed = actions.slice(-15);
-  const older = actions.slice(0, Math.max(0, actions.length - 15));
+  const prioritizedActions = prioritizeActions(actions);
+  const detailed = prioritizedActions.slice(0, 15);
+  const detailedIds = new Set(detailed.map((action) => action.id));
+  const older = actions.filter((action) => !detailedIds.has(action.id));
 
   if (sections.recentActions) {
     let actionsText = '## RECENT ACTIONS\n';
@@ -276,6 +301,22 @@ function trimToTokenBudget(session, maxTokens, sections) {
     body = body.slice(0, maxChars) + '\n\n... [PICKLEJAR: truncated by maxTokens] ...\n';
   }
   return body;
+}
+
+/**
+ * Prefer confirmed actions first when the dump has to be compressed.
+ * Keep stable ordering inside the same priority tier.
+ * @param {PicklejarSession['actions']} actions
+ */
+function prioritizeActions(actions) {
+  return actions
+    .map((action, idx) => ({ action, idx }))
+    .sort((a, b) => {
+      const byPriority = actionPriority(b.action) - actionPriority(a.action);
+      if (byPriority !== 0) return byPriority;
+      return a.idx - b.idx;
+    })
+    .map(({ action }) => action);
 }
 
 /**

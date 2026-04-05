@@ -40,6 +40,10 @@ describe('state + snapshot', () => {
       input: { file_path: 'x.ts' },
       output: 'ok',
       relatedFiles: ['x.ts'],
+      curationStatus: 'confirmed',
+      curationNote: 'validated by user',
+      curatedAt: 123,
+      curatedBy: 'test',
     });
     updateTaskTree(session, session.actions[0]);
     await saveSnapshot(session);
@@ -49,6 +53,8 @@ describe('state + snapshot', () => {
     expect(loaded?.sessionId).toBe('sess-1');
     expect(loaded?.goal).toBe('Ship feature');
     expect(loaded?.actions).toHaveLength(1);
+    expect(loaded?.actions[0].curationStatus).toBe('confirmed');
+    expect(loaded?.actions[0].curationNote).toBe('validated by user');
     expect(loaded?.snapshotCount).toBeGreaterThanOrEqual(1);
   });
 

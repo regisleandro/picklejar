@@ -139,4 +139,61 @@ describe('compiler', () => {
       },
     ]);
   });
+
+  it('omits persistently discarded actions by default', () => {
+    const s = createSession('curated-filter', '/tmp/p');
+    addAction(s, {
+      id: '1',
+      timestamp: Date.now(),
+      toolName: 'Read',
+      input: {},
+      output: 'alpha',
+      relatedFiles: ['alpha.ts'],
+    });
+    addAction(s, {
+      id: '2',
+      timestamp: Date.now() + 1,
+      toolName: 'Edit',
+      input: {},
+      output: 'beta',
+      relatedFiles: ['beta.ts'],
+      curationStatus: 'hallucinated',
+    });
+    const md = compileBrainDump(s, { maxTokens: 50_000 });
+    expect(md).toContain('alpha.ts');
+    expect(md).not.toContain('beta.ts');
+  });
+
+  it('can ignore persistent curation filters explicitly', () => {
+    const s = createSession('curated-override', '/tmp/p');
+    addAction(s, {
+      id: '1',
+      timestamp: Date.now(),
+      toolName: 'Edit',
+      input: {},
+      output: 'beta',
+      relatedFiles: ['beta.ts'],
+      includeInBrainDump: false,
+      curationStatus: 'discarded',
+    });
+    const md = compileBrainDump(s, { maxTokens: 50_000, ignoreCuration: true });
+    expect(md).toContain('beta.ts');
+  });
+
+  it('prioritizes confirmed actions under tight token budgets', () => {
+    const s = createSession('curated-priority', '/tmp/p');
+    for (let i = 0; i < 20; i += 1) {
+      addAction(s, {
+        id: String(i),
+        timestamp: 1700000000000 + i,
+        toolName: 'Read',
+        input: {},
+        output: `output-${i}-${'x'.repeat(250)}`,
+        relatedFiles: [`file-${i}.ts`],
+        curationStatus: i === 0 ? 'confirmed' : 'default',
+      });
+    }
+    const md = compileBrainDump(s, { maxTokens: 180 });
+    expect(md).toContain('output-0-');
+  });
 });

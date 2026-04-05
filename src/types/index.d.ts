@@ -20,6 +20,11 @@
  * @property {Record<string, unknown>} input
  * @property {string} output
  * @property {string[]} relatedFiles
+ * @property {boolean} [includeInBrainDump]
+ * @property {'default' | 'confirmed' | 'discarded' | 'hallucinated' | 'inconsistent' | 'dead_end'} [curationStatus]
+ * @property {string} [curationNote]
+ * @property {number} [curatedAt]
+ * @property {string} [curatedBy]
  */
 
 /**
