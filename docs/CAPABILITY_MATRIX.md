@@ -18,4 +18,6 @@
 
 - **Hooks** reuse `.picklejar/hooks/run-hook.js` → scripts shipped with `picklejar-agent` (`src/hooks/*`).
 - **Normalization:** `post-tool-use` accepts Claude-, Cursor-, and Cline-style payloads and generic JSON (`tool_output`, `result`, etc.).
+- **Curation layer:** persisted action metadata can exclude hallucinations, dead ends, and inconsistent steps from `resume` / `export` without deleting the original audit trail.
+- **Trusted handoff:** generated brain dumps now prioritize current trusted state, retained active files, and recent trusted actions; discarded paths can be added back explicitly for auditability.
 - **Antigravity:** MVP integration centered on a versioned file under `.agent/`; extend when a stable hooks API exists.

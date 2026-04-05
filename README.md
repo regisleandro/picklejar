@@ -63,9 +63,11 @@ picklejar start claude    # or: cursor, cn, opencode, kilo, aider, …
 | `picklejar status [dir]` | Latest snapshot summary |
 | `picklejar list [dir] [--verbose] [--sections]` | List snapshot files, optionally with derived session details |
 | `picklejar inspect <id> [dir]` | Pretty-print session JSON |
+| `picklejar actions <id> [dir]` | List recorded actions with curation metadata |
 | `picklejar export <id> [dir] [-o file.md] [filters...]` | Write brain dump markdown |
 | `picklejar resume [id] [dir] [filters...]` | Write `resume-context.md` + `force-resume.json` |
 | `picklejar start [agent] [dir]` | Inject resume context and launch the agent CLI when available |
+| `picklejar curate <subcommand> ...` | Persist curation metadata (`exclude`, `include`, `tag`, `note`, `reset`, `review`, `suggest`) |
 | `picklejar goal <text> [dir]` | Set goal on latest session |
 | `picklejar decide <desc> <reason> [dir]` | Record architecture decision |
 | `picklejar clean [--keep N] [dir]` | Prune old snapshots per session |
@@ -100,6 +102,8 @@ picklejar resume session-123 --without-recent-actions --without-instructions
 picklejar export session-123 --exclude-actions 1,3,8
 picklejar resume session-123 --interactive-actions
 picklejar export session-123 --list-actions
+picklejar resume session-123 --ignore-curation
+picklejar export session-123 --with-discarded-paths
 ```
 
 Available section filters:
@@ -113,13 +117,48 @@ Available section filters:
 - `--without-recent-actions`
 - `--without-history`
 - `--without-instructions`
+- `--with-discarded-paths`
 
 Action filtering details:
 
 - `--list-actions` prints all recorded actions with stable 1-based indexes.
-- `--exclude-actions 2,4,9` removes specific actions from `RECENT ACTIONS` and `SUMMARIZED HISTORY` in the generated summary.
+- `--exclude-actions 2,4,9` removes specific actions from `RECENT TRUSTED ACTIONS` and `TRUSTED HISTORY` in the generated summary.
 - `--interactive-actions` opens a keyboard selector in TTY terminals (`up/down`, `space`, `a`, `n`, `enter`, `q`) and falls back to the prompt-based index input outside TTY.
+- persisted curation is applied by default; use `--ignore-curation` to include all recorded actions again.
 - Filtering only affects the generated markdown; the underlying snapshot remains unchanged.
+
+## Curating a session
+
+Use curation when a session contains false starts, inconsistent tool output, or agent hallucinations that should not be handed off to the next agent.
+
+Examples:
+
+```bash
+picklejar actions session-123
+picklejar curate exclude session-123 5,6
+picklejar curate tag session-123 7 hallucinated
+picklejar curate note session-123 7 "assumed a file that does not exist"
+picklejar curate review session-123
+picklejar curate suggest session-123
+```
+
+Curation status semantics:
+
+- `confirmed` means the action is trusted and should be favored when the dump is trimmed.
+- `discarded` means the action should stay in the audit trail but stay out of the handoff context.
+- `hallucinated` means the agent invented or assumed something invalid.
+- `inconsistent` means the action produced contradictory or clearly failing output.
+- `dead_end` means the action reflects an abandoned path or reverted attempt.
+- `reset` clears all persisted curation metadata for the selected actions.
+
+The generated brain dump now emphasizes:
+
+- original user intent
+- current trusted state
+- active files retained after curation
+- recent trusted actions
+- trusted history
+- optional discarded paths for auditability
 
 ## How it works (core)
 
