@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { compileBrainDump, estimateTokens } from '../src/core/compiler.js';
+import { compileBrainDump, estimateTokens, listSelectableActions } from '../src/core/compiler.js';
 import { createSession, addAction } from '../src/core/state.js';
 
 describe('compiler', () => {
@@ -48,5 +48,95 @@ describe('compiler', () => {
     });
     const md = compileBrainDump(s, { maxTokens: 2000 });
     expect(estimateTokens(md)).toBeLessThan(4000);
+  });
+
+  it('omits disabled sections', () => {
+    const s = createSession('sections', '/tmp/p');
+    s.goal = 'Keep summary small';
+    s.activeFiles.push({
+      path: 'secret.txt',
+      hash: 'h1',
+      content: 'super secret',
+      lastTouchedAt: Date.now(),
+      lastAction: 'read',
+    });
+    const md = compileBrainDump(s, {
+      maxTokens: 50_000,
+      sections: {
+        activeFiles: false,
+        summarizedHistory: false,
+      },
+    });
+    expect(md).not.toContain('## ACTIVE FILES');
+    expect(md).not.toContain('## SUMMARIZED HISTORY');
+    expect(md).toContain('## USER ORIGINAL INTENT');
+  });
+
+  it('excludes selected action indexes from rendered actions', () => {
+    const s = createSession('filter-actions', '/tmp/p');
+    addAction(s, {
+      id: '1',
+      timestamp: Date.now(),
+      toolName: 'Read',
+      input: {},
+      output: 'alpha',
+      relatedFiles: ['alpha.ts'],
+    });
+    addAction(s, {
+      id: '2',
+      timestamp: Date.now() + 1,
+      toolName: 'Edit',
+      input: {},
+      output: 'beta',
+      relatedFiles: ['beta.ts'],
+    });
+    addAction(s, {
+      id: '3',
+      timestamp: Date.now() + 2,
+      toolName: 'Write',
+      input: {},
+      output: 'gamma',
+      relatedFiles: ['gamma.ts'],
+    });
+    const md = compileBrainDump(s, { maxTokens: 50_000, excludeActionIndexes: [2] });
+    expect(md).toContain('alpha.ts');
+    expect(md).toContain('gamma.ts');
+    expect(md).not.toContain('beta.ts');
+  });
+
+  it('lists selectable actions with stable 1-based indexes', () => {
+    const s = createSession('list-actions', '/tmp/p');
+    addAction(s, {
+      id: '1',
+      timestamp: 1700000000000,
+      toolName: 'Read',
+      input: { file: 'a' },
+      output: 'a',
+      relatedFiles: ['a.ts'],
+    });
+    addAction(s, {
+      id: '2',
+      timestamp: 1700000000100,
+      toolName: 'Bash',
+      input: { command: 'npm test' },
+      output: 'ok',
+      relatedFiles: [],
+    });
+    expect(listSelectableActions(s)).toEqual([
+      {
+        index: 1,
+        id: '1',
+        timestamp: 1700000000000,
+        toolName: 'Read',
+        summary: 'a.ts',
+      },
+      {
+        index: 2,
+        id: '2',
+        timestamp: 1700000000100,
+        toolName: 'Bash',
+        summary: '{"command":"npm test"}',
+      },
+    ]);
   });
 });

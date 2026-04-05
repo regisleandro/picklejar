@@ -9,7 +9,7 @@ import { loadSnapshot } from '../src/core/snapshot.js';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const cli = path.join(root, 'src', 'cli.js');
 
-function runCli(args, cwd) {
+function runCli(args, cwd, stdinText = '') {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [cli, ...args], { cwd });
     let out = '';
@@ -21,6 +21,8 @@ function runCli(args, cwd) {
       err += d.toString();
     });
     child.on('error', reject);
+    if (stdinText) child.stdin.write(stdinText);
+    child.stdin.end();
     child.on('close', (code) => resolve({ code, out, err }));
   });
 }
@@ -190,5 +192,136 @@ describe('e2e', () => {
 
     const snap = await loadSnapshot(proj, 'e2e1');
     expect(snap?.session.actions[0].output.split('\n').length).toBeLessThan(600);
+  });
+
+  it('list keeps the default snapshot-only output', async () => {
+    await runHook(
+      'post-tool-use',
+      {
+        session_id: 'list-default',
+        tool_name: 'Read',
+        tool_input: { file_path: 'src/default.ts' },
+        tool_response: 'ok',
+      },
+      { CLAUDE_PROJECT_DIR: proj },
+    );
+    const { code, out } = await runCli(['list', proj], process.cwd());
+    expect(code).toBe(0);
+    const line = out.trim().split('\n').find((row) => row.startsWith('list-default\t'));
+    expect(line).toBeTruthy();
+    expect(line.split('\t')).toHaveLength(3);
+    expect(line).toContain('.bin');
+  });
+
+  it('list --verbose shows derived title, action count, and ended status', async () => {
+    await runHook(
+      'post-tool-use',
+      {
+        session_id: 'list-verbose',
+        tool_name: 'Read',
+        tool_input: { file_path: 'src/verbose.ts' },
+        tool_response: 'ok',
+      },
+      { CLAUDE_PROJECT_DIR: proj },
+    );
+    const { code: goalCode } = await runCli(['goal', 'Ship list titles', proj], process.cwd());
+    expect(goalCode).toBe(0);
+
+    const { code, out } = await runCli(['list', proj, '--verbose'], process.cwd());
+    expect(code).toBe(0);
+    const line = out.trim().split('\n').filter((row) => row.startsWith('list-verbose\t')).at(-1);
+    expect(line).toBeTruthy();
+    const cols = line.split('\t');
+    expect(cols).toHaveLength(5);
+    expect(cols[2]).toBe('Ship list titles');
+    expect(cols[3]).toBe('1');
+    expect(cols[4]).toBe('no');
+  });
+
+  it('list --sections shows detected sections and title fallback', async () => {
+    await runHook(
+      'post-tool-use',
+      {
+        session_id: 'list-sections',
+        tool_name: 'Read',
+        tool_input: { file_path: 'src/sections.ts' },
+        tool_response: 'ok',
+      },
+      { CLAUDE_PROJECT_DIR: proj },
+    );
+    const { code, out } = await runCli(['list', proj, '--verbose', '--sections'], process.cwd());
+    expect(code).toBe(0);
+    const line = out.trim().split('\n').filter((row) => row.startsWith('list-sections\t')).at(-1);
+    expect(line).toBeTruthy();
+    const cols = line.split('\t');
+    expect(cols).toHaveLength(6);
+    expect(cols[2]).toBe('src/sections.ts');
+    expect(cols[5]).toContain('[progress, active files, recent actions]');
+  });
+
+  it('export supports excluding sections and action indexes', async () => {
+    await runHook(
+      'post-tool-use',
+      {
+        session_id: 'export-filter',
+        tool_name: 'Read',
+        tool_input: { file_path: 'alpha.ts' },
+        tool_response: 'alpha',
+      },
+      { CLAUDE_PROJECT_DIR: proj },
+    );
+    await runHook(
+      'post-tool-use',
+      {
+        session_id: 'export-filter',
+        tool_name: 'Edit',
+        tool_input: { file_path: 'beta.ts', new_string: 'beta' },
+        tool_response: 'beta',
+      },
+      { CLAUDE_PROJECT_DIR: proj },
+    );
+    const outFile = path.join(proj, 'filtered-export.md');
+    const { code } = await runCli(
+      ['export', 'export-filter', proj, '--without-active-files', '--exclude-actions', '2', '--out', outFile],
+      process.cwd(),
+    );
+    expect(code).toBe(0);
+    const content = await fs.readFile(outFile, 'utf8');
+    expect(content).not.toContain('## ACTIVE FILES');
+    expect(content).toContain('alpha.ts');
+    expect(content).not.toContain('beta.ts');
+  });
+
+  it('resume supports interactive action exclusion', async () => {
+    await runHook(
+      'post-tool-use',
+      {
+        session_id: 'resume-filter',
+        tool_name: 'Read',
+        tool_input: { file_path: 'one.ts' },
+        tool_response: 'one',
+      },
+      { CLAUDE_PROJECT_DIR: proj },
+    );
+    await runHook(
+      'post-tool-use',
+      {
+        session_id: 'resume-filter',
+        tool_name: 'Read',
+        tool_input: { file_path: 'two.ts' },
+        tool_response: 'two',
+      },
+      { CLAUDE_PROJECT_DIR: proj },
+    );
+    const { code, out } = await runCli(
+      ['resume', 'resume-filter', proj, '--interactive-actions'],
+      process.cwd(),
+      '2\n',
+    );
+    expect(code).toBe(0);
+    expect(out).toContain('Selectable actions');
+    const ctx = await fs.readFile(path.join(proj, '.picklejar', 'resume-context.md'), 'utf8');
+    expect(ctx).toContain('- [Read] one.ts');
+    expect(ctx).not.toContain('- [Read] two.ts');
   });
 });

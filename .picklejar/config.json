@@ -1,0 +1,8 @@
+{
+  "maxTokens": 30000,
+  "redactPatterns": [
+    "sk-[A-Za-z0-9]{20,}",
+    "Bearer\\s+[A-Za-z0-9._-]+",
+    "api[_-]?key[\"']?\\s*[:=]\\s*[\"'][^\"']+[\"']"
+  ]
+}

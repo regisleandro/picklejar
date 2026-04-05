@@ -3,11 +3,14 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import readline from 'node:readline/promises';
+import * as readlineUi from 'node:readline';
 import { Command } from 'commander';
-import { loadSnapshot, listSnapshots, saveSnapshot } from './core/snapshot.js';
-import { compileBrainDump } from './core/compiler.js';
+import { loadSnapshot, listSnapshots, readSnapshotFile, saveSnapshot } from './core/snapshot.js';
+import { compileBrainDump, listSelectableActions } from './core/compiler.js';
 import { loadConfig } from './core/config.js';
 import { picklejarRoot, forceResumePath, resumeContextPath, snapshotsDir } from './core/paths.js';
+import { summarizeSessionForList } from './core/list-summary.js';
 import {
   AGENT_IDS,
   CAPABILITIES,
@@ -20,6 +23,206 @@ import {
 function getPackageRoot() {
   const here = fileURLToPath(new URL('.', import.meta.url));
   return path.resolve(here, '..');
+}
+
+const SECTION_FLAGS = [
+  { option: 'withoutGoal', section: 'goal' },
+  { option: 'withoutNextAction', section: 'nextPlannedAction' },
+  { option: 'withoutError', section: 'lastError' },
+  { option: 'withoutProgress', section: 'progress' },
+  { option: 'withoutDecisions', section: 'decisions' },
+  { option: 'withoutActiveFiles', section: 'activeFiles' },
+  { option: 'withoutRecentActions', section: 'recentActions' },
+  { option: 'withoutHistory', section: 'summarizedHistory' },
+  { option: 'withoutInstructions', section: 'resumeInstructions' },
+];
+
+/**
+ * @param {string | undefined} raw
+ */
+function parseActionIndexes(raw) {
+  if (!raw) return [];
+  return [...new Set(raw
+    .split(',')
+    .map((part) => Number(part.trim()))
+    .filter((n) => Number.isInteger(n) && n > 0))].sort((a, b) => a - b);
+}
+
+/**
+ * @param {Record<string, unknown>} opts
+ */
+function sectionsFromCommandOptions(opts) {
+  return Object.fromEntries(
+    SECTION_FLAGS.map(({ option, section }) => [section, !opts[option]]),
+  );
+}
+
+/**
+ * @param {import('./types/index.d.ts').PicklejarSession} session
+ */
+function printSelectableActions(session) {
+  const rows = listSelectableActions(session);
+  if (!rows.length) {
+    console.log('No recorded actions.');
+    return;
+  }
+  console.log('Selectable actions (1-based indexes):');
+  for (const row of rows) {
+    console.log(`${row.index}. [${row.toolName}] ${new Date(row.timestamp).toISOString()} ${row.summary}`);
+  }
+}
+
+/**
+ * @param {ReturnType<typeof listSelectableActions>} rows
+ * @param {Set<number>} selected
+ * @param {number} cursor
+ */
+function renderActionSelector(rows, selected, cursor) {
+  const lines = [
+    'Select actions to exclude from the generated summary.',
+    'Keys: up/down move, space toggle, a all, n none, enter confirm, q cancel.',
+    '',
+  ];
+  for (let i = 0; i < rows.length; i += 1) {
+    const row = rows[i];
+    const pointer = i === cursor ? '>' : ' ';
+    const mark = selected.has(row.index) ? '[x]' : '[ ]';
+    lines.push(
+      `${pointer} ${mark} ${row.index}. [${row.toolName}] ${new Date(row.timestamp).toISOString()} ${row.summary}`,
+    );
+  }
+  return lines.join('\n');
+}
+
+/**
+ * @param {import('./types/index.d.ts').PicklejarSession} session
+ */
+async function promptForExcludedActions(session) {
+  const rows = listSelectableActions(session);
+  if (!rows.length) {
+    console.log('No recorded actions.');
+    return [];
+  }
+
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    printSelectableActions(session);
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    try {
+      const answer = await rl.question('Exclude action indexes (comma-separated, blank for none): ');
+      return parseActionIndexes(answer);
+    } finally {
+      rl.close();
+    }
+  }
+
+  const selected = new Set();
+  let cursor = 0;
+  const stdin = process.stdin;
+  const stdout = process.stdout;
+
+  return await new Promise((resolve) => {
+    const redraw = () => {
+      readlineUi.cursorTo(stdout, 0, 0);
+      readlineUi.clearScreenDown(stdout);
+      stdout.write(renderActionSelector(rows, selected, cursor));
+    };
+
+    const cleanup = () => {
+      stdin.off('data', onData);
+      if (stdin.isTTY) stdin.setRawMode(false);
+      stdout.write('\x1b[?25h');
+      stdout.write('\n');
+      stdin.pause();
+    };
+
+    const finish = () => {
+      cleanup();
+      resolve([...selected].sort((a, b) => a - b));
+    };
+
+    const toggleCurrent = () => {
+      const current = rows[cursor];
+      if (!current) return;
+      if (selected.has(current.index)) selected.delete(current.index);
+      else selected.add(current.index);
+    };
+
+    const onData = (chunk) => {
+      const key = String(chunk);
+      if (key === '\u0003') {
+        cleanup();
+        process.exit(130);
+      }
+      if (key === 'q' || key === '\r' || key === '\n') {
+        finish();
+        return;
+      }
+      if (key === ' ') {
+        toggleCurrent();
+        redraw();
+        return;
+      }
+      if (key === 'a') {
+        for (const row of rows) selected.add(row.index);
+        redraw();
+        return;
+      }
+      if (key === 'n') {
+        selected.clear();
+        redraw();
+        return;
+      }
+      if (key === '\u001b[A' || key === 'k') {
+        cursor = cursor > 0 ? cursor - 1 : rows.length - 1;
+        redraw();
+        return;
+      }
+      if (key === '\u001b[B' || key === 'j') {
+        cursor = cursor < rows.length - 1 ? cursor + 1 : 0;
+        redraw();
+      }
+    };
+
+    stdout.write('\x1b[?25l');
+    stdin.setEncoding('utf8');
+    stdin.setRawMode(true);
+    stdin.resume();
+    stdin.on('data', onData);
+    redraw();
+  });
+}
+
+/**
+ * @param {import('./types/index.d.ts').PicklejarSession} session
+ * @param {Record<string, unknown>} opts
+ */
+async function resolveBrainDumpOptions(session, opts) {
+  const cliExcluded = parseActionIndexes(typeof opts.excludeActions === 'string' ? opts.excludeActions : '');
+  const interactiveExcluded = opts.interactiveActions ? await promptForExcludedActions(session) : [];
+  const excludeActionIndexes = [...new Set([...cliExcluded, ...interactiveExcluded])].sort((a, b) => a - b);
+  return {
+    sections: sectionsFromCommandOptions(opts),
+    excludeActionIndexes,
+  };
+}
+
+/**
+ * @param {Command} cmd
+ */
+function addBrainDumpFilterOptions(cmd) {
+  return cmd
+    .option('--without-goal', 'exclude original user intent from the generated summary')
+    .option('--without-next-action', 'exclude next planned action from the generated summary')
+    .option('--without-error', 'exclude interruption reason from the generated summary')
+    .option('--without-progress', 'exclude progress/task tree from the generated summary')
+    .option('--without-decisions', 'exclude architecture decisions from the generated summary')
+    .option('--without-active-files', 'exclude active file snapshots from the generated summary')
+    .option('--without-recent-actions', 'exclude RECENT ACTIONS section from the generated summary')
+    .option('--without-history', 'exclude SUMMARIZED HISTORY section from the generated summary')
+    .option('--without-instructions', 'exclude resume instruction text from the generated summary')
+    .option('--exclude-actions <indexes>', 'comma-separated 1-based action indexes to exclude from actions/history')
+    .option('--interactive-actions', 'interactively choose action indexes to exclude from actions/history using keyboard controls')
+    .option('--list-actions', 'print selectable action indexes and exit');
 }
 
 const program = new Command();
@@ -95,15 +298,44 @@ program
   .command('list')
   .description('List snapshot files')
   .argument('[dir]', 'project directory', process.cwd())
-  .action(async (dir) => {
+  .option('--verbose', 'show derived session title, actions count, and ended status')
+  .option('--sections', 'show detected content sections present in each snapshot')
+  .action(async (dir, opts) => {
     const projectDir = path.resolve(dir);
     const rows = await listSnapshots(projectDir);
     if (!rows.length) {
       console.log('No snapshots.');
       return;
     }
+
+    const includeSummary = Boolean(opts.verbose || opts.sections);
     for (const r of rows) {
-      console.log(`${r.sessionId}\t${r.file}\t${new Date(r.mtimeMs).toISOString()}`);
+      const base = includeSummary
+        ? [`${r.sessionId}`, `${new Date(r.mtimeMs).toISOString()}`]
+        : [`${r.sessionId}`, `${r.file}`, `${new Date(r.mtimeMs).toISOString()}`];
+      if (!includeSummary) {
+        console.log(base.join('\t'));
+        continue;
+      }
+
+      const loaded = await readSnapshotFile(projectDir, r.file);
+      if (!loaded) {
+        const extras = [];
+        if (opts.verbose) extras.push('(unreadable snapshot)', '?', '?');
+        if (opts.sections) extras.push('[]');
+        console.log(base.concat(extras).join('\t'));
+        continue;
+      }
+
+      const summary = summarizeSessionForList(loaded.session);
+      const extras = [];
+      if (opts.verbose) {
+        extras.push(summary.title, String(summary.actionsCount), summary.ended ? 'yes' : 'no');
+      }
+      if (opts.sections) {
+        extras.push(`[${summary.sections.join(', ')}]`);
+      }
+      console.log(base.concat(extras).join('\t'));
     }
   });
 
@@ -123,16 +355,17 @@ program
     console.log(JSON.stringify(loaded.session, null, 2));
   });
 
-const exportCmd = program
+const exportCmd = addBrainDumpFilterOptions(program
   .command('export')
   .description('Write brain dump markdown for a session')
   .argument('<id>', 'session id')
   .argument('[dir]', 'project directory', process.cwd())
-  .option('-o, --out <file>', 'output .md path (default: .picklejar/export-<id>.md)');
+  .option('-o, --out <file>', 'output .md path (default: .picklejar/export-<id>.md)'));
 
 exportCmd.action(async (id, dir) => {
   const projectDir = path.resolve(dir);
-  const outOpt = exportCmd.opts().out;
+  const opts = exportCmd.opts();
+  const outOpt = opts.out;
   const outPath = outOpt
     ? path.isAbsolute(outOpt)
       ? outOpt
@@ -141,26 +374,32 @@ exportCmd.action(async (id, dir) => {
   const loaded = await loadSnapshot(projectDir, id);
   if (!loaded) {
     console.error('Session not found');
-    process.exitCode = 1;
+      process.exitCode = 1;
+      return;
+  }
+  if (opts.listActions) {
+    printSelectableActions(loaded.session);
     return;
   }
   const cfg = await loadConfig(projectDir);
-  const md = compileBrainDump(loaded.session, { maxTokens: cfg.maxTokens });
+  const dumpOptions = await resolveBrainDumpOptions(loaded.session, opts);
+  const md = compileBrainDump(loaded.session, { maxTokens: cfg.maxTokens, ...dumpOptions });
   await fs.mkdir(path.dirname(outPath), { recursive: true });
   await fs.writeFile(outPath, md, 'utf8');
   console.log(`Wrote ${outPath}`);
 });
 
-const resumeCmd = program
+const resumeCmd = addBrainDumpFilterOptions(program
   .command('resume')
   .description('Prepare session resume: write brain dump and set force-resume flag')
   .option('--id <id>', 'session id (default: latest)')
   .argument('[id]', 'session id (positional)')
-  .argument('[dir]', 'project directory', process.cwd());
+  .argument('[dir]', 'project directory', process.cwd()));
 
 resumeCmd.action(async (idArg, dir) => {
   const projectDir = path.resolve(dir);
-  let sessionId = idArg || resumeCmd.opts().id;
+  const opts = resumeCmd.opts();
+  let sessionId = idArg || opts.id;
   if (!sessionId) {
     const rows = await listSnapshots(projectDir);
     sessionId = rows.at(-1)?.sessionId;
@@ -173,11 +412,16 @@ resumeCmd.action(async (idArg, dir) => {
   const loaded = await loadSnapshot(projectDir, sessionId);
   if (!loaded) {
     console.error('Session not found');
-    process.exitCode = 1;
+      process.exitCode = 1;
+      return;
+  }
+  if (opts.listActions) {
+    printSelectableActions(loaded.session);
     return;
   }
   const cfg = await loadConfig(projectDir);
-  const md = compileBrainDump(loaded.session, { maxTokens: cfg.maxTokens });
+  const dumpOptions = await resolveBrainDumpOptions(loaded.session, opts);
+  const md = compileBrainDump(loaded.session, { maxTokens: cfg.maxTokens, ...dumpOptions });
 
   await fs.mkdir(picklejarRoot(projectDir), { recursive: true });
   await fs.writeFile(resumeContextPath(projectDir), md, 'utf8');

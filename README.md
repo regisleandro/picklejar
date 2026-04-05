@@ -1,6 +1,6 @@
 # picklejar-agent
 
-Persist AI agent sessions using **native hooks** (no HTTP proxy). Each tool use can be saved incrementally to `.picklejar/snapshots/`; on resume, a **Brain Dump** (Markdown) is injected via agent-specific adapters.
+Persist AI agent sessions using **native hooks**. Each tool use can be saved incrementally to `.picklejar/snapshots/`; on resume, a **Brain Dump** (Markdown) is injected via agent-specific adapters.
 
 **Supported agents (see [docs/CAPABILITY_MATRIX.md](docs/CAPABILITY_MATRIX.md)):** Claude Code, Cursor, Continue CLI, GitHub Copilot CLI, Cline (hooks track); OpenCode, Kilo, Antigravity, Aider (instructions / session track). **OpenAI Codex is out of scope** for this roadmap.
 
@@ -61,14 +61,25 @@ picklejar start claude    # or: cursor, cn, opencode, kilo, aider, …
 | `picklejar init [agent] [dir]` | Set up `.picklejar` + hooks for `agent` (default `claude`) |
 | `picklejar capabilities [agent]` | JSON summary of integration track / notes |
 | `picklejar status [dir]` | Latest snapshot summary |
-| `picklejar list [dir]` | List snapshot files |
+| `picklejar list [dir] [--verbose] [--sections]` | List snapshot files, optionally with derived session details |
 | `picklejar inspect <id> [dir]` | Pretty-print session JSON |
-| `picklejar export <id> [dir] [-o file.md]` | Write brain dump markdown |
-| `picklejar resume [id] [dir]` | Write `resume-context.md` + `force-resume.json` |
+| `picklejar export <id> [dir] [-o file.md] [filters...]` | Write brain dump markdown |
+| `picklejar resume [id] [dir] [filters...]` | Write `resume-context.md` + `force-resume.json` |
 | `picklejar start [agent] [dir]` | Inject resume context and launch the agent CLI when available |
 | `picklejar goal <text> [dir]` | Set goal on latest session |
 | `picklejar decide <desc> <reason> [dir]` | Record architecture decision |
 | `picklejar clean [--keep N] [dir]` | Prune old snapshots per session |
+
+Examples:
+
+```bash
+picklejar list
+picklejar list --verbose
+picklejar list --verbose --sections
+```
+
+- `--verbose` switches to a compact summary view with timestamp, derived title, action count, and ended status, without the snapshot file path column.
+- `--sections` adds a compact list of detected content areas present in the snapshot, such as `goal`, `progress`, `active files`, and `recent actions`.
 
 ## Configuration
 
@@ -76,6 +87,39 @@ picklejar start claude    # or: cursor, cn, opencode, kilo, aider, …
 
 - `maxTokens` — brain dump budget (default `30000`)
 - `redactPatterns` — regex sources applied to tool output before persistence
+
+## Filtering export and resume output
+
+`picklejar export` and `picklejar resume` can exclude sections from the generated brain dump without changing the stored snapshot.
+
+Examples:
+
+```bash
+picklejar export session-123 --without-active-files --without-history
+picklejar resume session-123 --without-recent-actions --without-instructions
+picklejar export session-123 --exclude-actions 1,3,8
+picklejar resume session-123 --interactive-actions
+picklejar export session-123 --list-actions
+```
+
+Available section filters:
+
+- `--without-goal`
+- `--without-next-action`
+- `--without-error`
+- `--without-progress`
+- `--without-decisions`
+- `--without-active-files`
+- `--without-recent-actions`
+- `--without-history`
+- `--without-instructions`
+
+Action filtering details:
+
+- `--list-actions` prints all recorded actions with stable 1-based indexes.
+- `--exclude-actions 2,4,9` removes specific actions from `RECENT ACTIONS` and `SUMMARIZED HISTORY` in the generated summary.
+- `--interactive-actions` opens a keyboard selector in TTY terminals (`up/down`, `space`, `a`, `n`, `enter`, `q`) and falls back to the prompt-based index input outside TTY.
+- Filtering only affects the generated markdown; the underlying snapshot remains unchanged.
 
 ## How it works (core)
 

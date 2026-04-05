@@ -1,12 +1,85 @@
 /** @typedef {import('../types/index.d.ts').PicklejarSession} PicklejarSession */
 /** @typedef {import('../types/index.d.ts').TaskNode} TaskNode */
 
+export const DEFAULT_BRAIN_DUMP_SECTIONS = Object.freeze({
+  goal: true,
+  nextPlannedAction: true,
+  lastError: true,
+  progress: true,
+  decisions: true,
+  activeFiles: true,
+  recentActions: true,
+  summarizedHistory: true,
+  resumeInstructions: true,
+});
+
 /**
  * Very rough token estimate for budgeting output size.
  * @param {string} s
  */
 export function estimateTokens(s) {
   return Math.ceil(s.length / 4);
+}
+
+/**
+ * @param {unknown} value
+ */
+function stringifyValue(value) {
+  if (typeof value === 'string') return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+/**
+ * @param {PicklejarSession['actions'][number]} action
+ */
+function actionSummary(action) {
+  const inputSummary =
+    action.relatedFiles?.join(', ') || stringifyValue(action.input).slice(0, 120) || '(no input)';
+  return inputSummary;
+}
+
+/**
+ * @param {{ sections?: Partial<typeof DEFAULT_BRAIN_DUMP_SECTIONS>, excludeActionIndexes?: number[] }} [opts]
+ */
+export function normalizeBrainDumpOptions(opts = {}) {
+  const sections = {
+    ...DEFAULT_BRAIN_DUMP_SECTIONS,
+    ...(opts.sections ?? {}),
+  };
+  const excludeActionIndexes = [...new Set((opts.excludeActionIndexes ?? [])
+    .map((n) => Number(n))
+    .filter((n) => Number.isInteger(n) && n > 0))].sort((a, b) => a - b);
+  return { sections, excludeActionIndexes };
+}
+
+/**
+ * @param {PicklejarSession} session
+ * @param {{ excludeActionIndexes?: number[] }} [opts]
+ */
+function filterSessionActions(session, opts = {}) {
+  const exclude = new Set(opts.excludeActionIndexes ?? []);
+  if (exclude.size === 0) return session;
+  return {
+    ...session,
+    actions: (session.actions ?? []).filter((_action, idx) => !exclude.has(idx + 1)),
+  };
+}
+
+/**
+ * @param {PicklejarSession} session
+ */
+export function listSelectableActions(session) {
+  return (session.actions ?? []).map((action, idx) => ({
+    index: idx + 1,
+    id: action.id,
+    timestamp: action.timestamp,
+    toolName: action.toolName,
+    summary: actionSummary(action),
+  }));
 }
 
 /**
@@ -43,131 +116,164 @@ function formatTaskTree(session) {
  */
 export function compileBrainDump(session, opts = {}) {
   const maxTokens = opts.maxTokens ?? 30_000;
+  const { sections, excludeActionIndexes } = normalizeBrainDumpOptions(opts);
+  const filteredSession = filterSessionActions(session, { excludeActionIndexes });
   const lines = [];
 
-  lines.push(`# [PICKLEJAR RESUME] Session ${session.sessionId}`);
+  lines.push(`# [PICKLEJAR RESUME] Session ${filteredSession.sessionId}`);
   lines.push('');
-  lines.push('**IMPORTANT: You are resuming a previous session. When the user sends their first message, you MUST start by briefly acknowledging you have context from the previous session and summarize what was being worked on before continuing.**');
-  lines.push('');
-  lines.push('## USER ORIGINAL INTENT');
-  lines.push(session.goal || '(not captured)');
-  lines.push('');
-  lines.push('## NEXT PLANNED ACTION');
-  lines.push(session.lastPlannedAction ?? 'Not identified');
-  lines.push('');
-  lines.push('## ERROR / REASON FOR INTERRUPTION');
-  lines.push(session.lastError ?? 'Session resumed normally');
-  lines.push('');
-  lines.push('## PROGRESS');
-  lines.push(formatTaskTree(session));
-  lines.push('');
-  lines.push('## ARCHITECTURE DECISIONS');
-  if (!session.decisions?.length) {
-    lines.push('_(none recorded)_');
-  } else {
-    for (const d of session.decisions) {
-      lines.push(`- ${d.description} — _${d.reasoning}_ (${new Date(d.timestamp).toISOString()})`);
-    }
+  if (sections.resumeInstructions) {
+    lines.push('**IMPORTANT: You are resuming a previous session. When the user sends their first message, you MUST start by briefly acknowledging you have context from the previous session and summarize what was being worked on before continuing.**');
+    lines.push('');
   }
-  lines.push('');
-  lines.push('## ACTIVE FILES');
-  if (!session.activeFiles?.length) {
-    lines.push('_(none)_');
-  } else {
-    for (const f of session.activeFiles) {
-      lines.push(`### ${f.path}`);
-      lines.push('```');
-      lines.push(f.content);
-      lines.push('```');
+  if (sections.goal) {
+    lines.push('## USER ORIGINAL INTENT');
+    lines.push(filteredSession.goal || '(not captured)');
+    lines.push('');
+  }
+  if (sections.nextPlannedAction) {
+    lines.push('## NEXT PLANNED ACTION');
+    lines.push(filteredSession.lastPlannedAction ?? 'Not identified');
+    lines.push('');
+  }
+  if (sections.lastError) {
+    lines.push('## ERROR / REASON FOR INTERRUPTION');
+    lines.push(filteredSession.lastError ?? 'Session resumed normally');
+    lines.push('');
+  }
+  if (sections.progress) {
+    lines.push('## PROGRESS');
+    lines.push(formatTaskTree(filteredSession));
+    lines.push('');
+  }
+  if (sections.decisions) {
+    lines.push('## ARCHITECTURE DECISIONS');
+    if (!filteredSession.decisions?.length) {
+      lines.push('_(none recorded)_');
+    } else {
+      for (const d of filteredSession.decisions) {
+        lines.push(`- ${d.description} — _${d.reasoning}_ (${new Date(d.timestamp).toISOString()})`);
+      }
+    }
+    lines.push('');
+  }
+  if (sections.activeFiles) {
+    lines.push('## ACTIVE FILES');
+    if (!filteredSession.activeFiles?.length) {
+      lines.push('_(none)_');
+    } else {
+      for (const f of filteredSession.activeFiles) {
+        lines.push(`### ${f.path}`);
+        lines.push('```');
+        lines.push(f.content);
+        lines.push('```');
+      }
     }
   }
 
-  const actions = session.actions ?? [];
+  const actions = filteredSession.actions ?? [];
   const detailed = actions.slice(-15);
   const older = actions.slice(0, Math.max(0, actions.length - 15));
 
-  lines.push('');
-  lines.push('## RECENT ACTIONS');
-  for (const a of detailed) {
-    const t = new Date(a.timestamp).toISOString();
-    const inputSummary =
-      a.relatedFiles?.join(', ') ||
-      (typeof a.input === 'string' ? a.input : JSON.stringify(a.input)).slice(0, 120);
-    lines.push(`- [${a.toolName}] ${inputSummary} (${t})`);
-  }
-
-  lines.push('');
-  lines.push('## SUMMARIZED HISTORY');
-  if (older.length === 0) {
-    lines.push('_(no older actions beyond the recent ones)_');
-  } else {
-    const byTool = older.reduce((acc, a) => {
-      acc[a.toolName] = (acc[a.toolName] ?? 0) + 1;
-      return acc;
-    }, {});
-    lines.push(`${older.length} previous actions — by tool: ${JSON.stringify(byTool)}`);
-    for (const a of older) {
-      lines.push(
-        `- [${a.toolName}] ${a.relatedFiles?.[0] ?? ''}`.trim(),
-      );
+  if (sections.recentActions) {
+    lines.push('');
+    lines.push('## RECENT ACTIONS');
+    for (const a of detailed) {
+      const t = new Date(a.timestamp).toISOString();
+      lines.push(`- [${a.toolName}] ${actionSummary(a)} (${t})`);
     }
   }
 
-  lines.push('');
-  lines.push('INSTRUCTION: Continue from the interruption point. On first user message, acknowledge this resumed context before proceeding.');
+  if (sections.summarizedHistory) {
+    lines.push('');
+    lines.push('## SUMMARIZED HISTORY');
+    if (older.length === 0) {
+      lines.push('_(no older actions beyond the recent ones)_');
+    } else {
+      const byTool = older.reduce((acc, a) => {
+        acc[a.toolName] = (acc[a.toolName] ?? 0) + 1;
+        return acc;
+      }, {});
+      lines.push(`${older.length} previous actions — by tool: ${JSON.stringify(byTool)}`);
+      for (const a of older) {
+        lines.push(`- [${a.toolName}] ${a.relatedFiles?.[0] ?? ''}`.trim());
+      }
+    }
+  }
+
+  if (sections.resumeInstructions) {
+    lines.push('');
+    lines.push('INSTRUCTION: Continue from the interruption point. On first user message, acknowledge this resumed context before proceeding.');
+  }
 
   let md = lines.join('\n');
   if (estimateTokens(md) <= maxTokens) return md;
 
   // Priority trim: shrink summarized history, then large files, then old single-line actions
-  md = trimToTokenBudget(session, maxTokens);
+  md = trimToTokenBudget(filteredSession, maxTokens, sections);
   return md;
 }
 
 /**
  * @param {PicklejarSession} session
  * @param {number} maxTokens
+ * @param {typeof DEFAULT_BRAIN_DUMP_SECTIONS} sections
  */
-function trimToTokenBudget(session, maxTokens) {
+function trimToTokenBudget(session, maxTokens, sections) {
   const maxChars = maxTokens * 4;
   const headParts = [];
 
   headParts.push(`# [PICKLEJAR RESUME] Session ${session.sessionId}\n`);
-  headParts.push('**IMPORTANT: You are resuming a previous session. When the user sends their first message, you MUST start by briefly acknowledging you have context from the previous session and summarize what was being worked on before continuing.**\n\n');
-  headParts.push(`## USER ORIGINAL INTENT\n${session.goal || '(not captured)'}\n\n`);
-  headParts.push(
-    `## NEXT PLANNED ACTION\n${session.lastPlannedAction ?? 'Not identified'}\n\n`,
-  );
-  headParts.push(`## ERROR / REASON FOR INTERRUPTION\n${session.lastError ?? 'Session resumed normally'}\n\n`);
-  headParts.push(`## PROGRESS\n${formatTaskTree(session)}\n\n`);
-  headParts.push('## ARCHITECTURE DECISIONS\n');
-  headParts.push(
-    session.decisions?.length
-      ? session.decisions.map((d) => `- ${d.description}`).join('\n')
-      : '_(none)_',
-  );
-  headParts.push('\n\n');
+  if (sections.resumeInstructions) {
+    headParts.push('**IMPORTANT: You are resuming a previous session. When the user sends their first message, you MUST start by briefly acknowledging you have context from the previous session and summarize what was being worked on before continuing.**\n\n');
+  }
+  if (sections.goal) headParts.push(`## USER ORIGINAL INTENT\n${session.goal || '(not captured)'}\n\n`);
+  if (sections.nextPlannedAction) {
+    headParts.push(`## NEXT PLANNED ACTION\n${session.lastPlannedAction ?? 'Not identified'}\n\n`);
+  }
+  if (sections.lastError) {
+    headParts.push(`## ERROR / REASON FOR INTERRUPTION\n${session.lastError ?? 'Session resumed normally'}\n\n`);
+  }
+  if (sections.progress) headParts.push(`## PROGRESS\n${formatTaskTree(session)}\n\n`);
+  if (sections.decisions) {
+    headParts.push('## ARCHITECTURE DECISIONS\n');
+    headParts.push(
+      session.decisions?.length
+        ? session.decisions.map((d) => `- ${d.description}`).join('\n')
+        : '_(none)_',
+    );
+    headParts.push('\n\n');
+  }
 
   let body = headParts.join('');
-  const filesSection = formatActiveFilesTrimmed(session.activeFiles ?? [], maxChars - body.length - 2000);
-  body += `## ACTIVE FILES\n${filesSection}\n\n`;
+  if (sections.activeFiles) {
+    const filesSection = formatActiveFilesTrimmed(session.activeFiles ?? [], maxChars - body.length - 2000);
+    body += `## ACTIVE FILES\n${filesSection}\n\n`;
+  }
 
   const actions = session.actions ?? [];
   const detailed = actions.slice(-15);
   const older = actions.slice(0, Math.max(0, actions.length - 15));
 
-  let actionsText = '## RECENT ACTIONS\n';
-  for (const a of detailed) {
-    const outputStr = typeof a.output === 'string' ? a.output : JSON.stringify(a.output);
-    actionsText += `- [${a.toolName}] ${truncateStr(outputStr, 400)}\n`;
+  if (sections.recentActions) {
+    let actionsText = '## RECENT ACTIONS\n';
+    for (const a of detailed) {
+      const outputStr = stringifyValue(a.output);
+      actionsText += `- [${a.toolName}] ${truncateStr(outputStr, 400)}\n`;
+    }
+    body += actionsText;
+    body += '\n';
   }
-  actionsText += '\n## SUMMARIZED HISTORY\n';
-  actionsText += `${older.length} actions — summary omitted to fit token budget.\n`;
-  body += actionsText;
-  body += '\nINSTRUCTION: Continue from the interruption point. On first user message, acknowledge this resumed context before proceeding.';
+  if (sections.summarizedHistory) {
+    body += '## SUMMARIZED HISTORY\n';
+    body += `${older.length} actions — summary omitted to fit token budget.\n`;
+  }
+  if (sections.resumeInstructions) {
+    body += '\nINSTRUCTION: Continue from the interruption point. On first user message, acknowledge this resumed context before proceeding.';
+  }
 
   if (body.length > maxChars) {
-    body = body.slice(0, maxChars) + '\n\n… [PICKLEJAR: truncated by maxTokens] …\n';
+    body = body.slice(0, maxChars) + '\n\n... [PICKLEJAR: truncated by maxTokens] ...\n';
   }
   return body;
 }

@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "node .picklejar/hooks/run-hook.js session-start"
+      }
+    ],
+    "sessionEnd": [
+      {
+        "command": "node .picklejar/hooks/run-hook.js session-end"
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "node .picklejar/hooks/run-hook.js post-tool-use",
+        "matcher": "*"
+      }
+    ],
+    "preCompact": [
+      {
+        "command": "node .picklejar/hooks/run-hook.js pre-compact"
+      }
+    ],
+    "stop": [
+      {
+        "command": "node .picklejar/hooks/run-hook.js stop"
+      }
+    ]
+  }
+}

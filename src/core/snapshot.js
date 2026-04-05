@@ -240,6 +240,22 @@ export async function listSnapshots(projectDir) {
 }
 
 /**
+ * @param {string} projectDir
+ * @param {string} file
+ * @returns {Promise<{ file: string, type: string, savedAt: number, session: PicklejarSession } | null>}
+ */
+export async function readSnapshotFile(projectDir, file) {
+  const full = path.join(snapshotsDir(projectDir), file);
+  try {
+    const buf = await fs.readFile(full);
+    const decoded = decodeSnapshot(buf);
+    return { file, ...decoded };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * @param {string} content
  */
 export function shortHash(content) {
