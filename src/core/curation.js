@@ -7,6 +7,13 @@ export const CURATION_STATUSES = Object.freeze([
   'dead_end',
 ]);
 
+export const CURATION_PROFILES = Object.freeze([
+  'balanced',
+  'strict',
+  'audit',
+  'recovery',
+]);
+
 export const EXCLUDED_CURATION_STATUSES = new Set([
   'discarded',
   'hallucinated',
@@ -23,11 +30,43 @@ export function normalizeCurationStatus(status) {
 }
 
 /**
+ * @param {string | undefined} profile
+ */
+export function normalizeCurationProfile(profile) {
+  const value = String(profile ?? 'balanced').trim().toLowerCase();
+  return CURATION_PROFILES.includes(value) ? value : null;
+}
+
+/**
  * @param {import('../types/index.d.ts').ToolAction} action
  */
 export function actionIsExcludedByCuration(action) {
   if (action.includeInBrainDump === false) return true;
   return EXCLUDED_CURATION_STATUSES.has(action.curationStatus ?? 'default');
+}
+
+/**
+ * @param {import('../types/index.d.ts').ToolAction} action
+ * @param {'balanced' | 'strict' | 'audit' | 'recovery'} profile
+ * @param {boolean} ignoreCuration
+ */
+export function actionIncludedInProfile(action, profile = 'balanced', ignoreCuration = false) {
+  if (ignoreCuration) return true;
+  const status = action.curationStatus ?? 'default';
+  if (action.includeInBrainDump === false) {
+    return profile === 'audit';
+  }
+  switch (profile) {
+    case 'strict':
+      return status === 'confirmed';
+    case 'audit':
+      return true;
+    case 'recovery':
+      return status !== 'hallucinated' && status !== 'inconsistent';
+    case 'balanced':
+    default:
+      return !EXCLUDED_CURATION_STATUSES.has(status);
+  }
 }
 
 /**
@@ -106,4 +145,26 @@ export function suggestCurationForSession(session) {
     }
   }
   return suggestions;
+}
+
+/**
+ * @param {import('../types/index.d.ts').PicklejarSession} session
+ */
+export function summarizeCurationStats(session) {
+  const stats = {
+    total: session.actions?.length ?? 0,
+    included: 0,
+    excluded: 0,
+    suggested: 0,
+    byStatus: Object.fromEntries(CURATION_STATUSES.map((status) => [status, 0])),
+  };
+  const suggestedIds = new Set(suggestCurationForSession(session).map((row) => row.id));
+  for (const action of session.actions ?? []) {
+    const status = action.curationStatus ?? 'default';
+    stats.byStatus[status] += 1;
+    if (actionIsExcludedByCuration(action)) stats.excluded += 1;
+    else stats.included += 1;
+    if (suggestedIds.has(action.id)) stats.suggested += 1;
+  }
+  return stats;
 }

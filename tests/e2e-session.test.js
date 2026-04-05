@@ -435,4 +435,117 @@ describe('e2e', () => {
     const { out } = await runCli(['actions', 'review-cli', proj], process.cwd());
     expect(out).toContain('confirmed');
   });
+
+  it('resume supports strict profile with confirmed actions only', async () => {
+    await runHook(
+      'post-tool-use',
+      {
+        session_id: 'profile-strict',
+        tool_name: 'Read',
+        tool_input: { file_path: 'src/confirmed.ts' },
+        tool_response: 'confirmed',
+      },
+      { CLAUDE_PROJECT_DIR: proj },
+    );
+    await runHook(
+      'post-tool-use',
+      {
+        session_id: 'profile-strict',
+        tool_name: 'Read',
+        tool_input: { file_path: 'src/default.ts' },
+        tool_response: 'default',
+      },
+      { CLAUDE_PROJECT_DIR: proj },
+    );
+    await runCli(['curate', 'confirm', 'profile-strict', '1', proj], process.cwd());
+    const { code } = await runCli(['resume', 'profile-strict', proj, '--profile', 'strict'], process.cwd());
+    expect(code).toBe(0);
+    const ctx = await fs.readFile(path.join(proj, '.picklejar', 'resume-context.md'), 'utf8');
+    expect(ctx).toContain('src/confirmed.ts');
+    expect(ctx).not.toContain('src/default.ts');
+  });
+
+  it('export supports audit profile with discarded paths', async () => {
+    await runHook(
+      'post-tool-use',
+      {
+        session_id: 'profile-audit',
+        tool_name: 'Read',
+        tool_input: { file_path: 'src/audit.ts' },
+        tool_response: 'audit',
+      },
+      { CLAUDE_PROJECT_DIR: proj },
+    );
+    await runCli(['curate', 'exclude', 'profile-audit', '1', proj], process.cwd());
+    const outFile = path.join(proj, 'audit.md');
+    const { code } = await runCli(['export', 'profile-audit', proj, '--profile', 'audit', '-o', outFile], process.cwd());
+    expect(code).toBe(0);
+    const md = await fs.readFile(outFile, 'utf8');
+    expect(md).toContain('src/audit.ts');
+    expect(md).toContain('## DISCARDED PATHS');
+  });
+
+  it('curate approve-unsuggested confirms only clean actions', async () => {
+    await runHook(
+      'post-tool-use',
+      {
+        session_id: 'approve-unsuggested',
+        tool_name: 'Read',
+        tool_input: { file_path: 'src/clean.ts' },
+        tool_response: 'clean',
+      },
+      { CLAUDE_PROJECT_DIR: proj },
+    );
+    await runHook(
+      'post-tool-use',
+      {
+        session_id: 'approve-unsuggested',
+        tool_name: 'Bash',
+        tool_input: { command: 'cat missing.txt' },
+        tool_response: 'cat: missing.txt: No such file or directory',
+      },
+      { CLAUDE_PROJECT_DIR: proj },
+    );
+    const { code } = await runCli(['curate', 'approve-unsuggested', 'approve-unsuggested', proj], process.cwd());
+    expect(code).toBe(0);
+    const { out } = await runCli(['actions', 'approve-unsuggested', proj], process.cwd());
+    expect(out).toContain('\tconfirmed\t');
+    expect(out).toContain('\tdefault\t');
+  });
+
+  it('curate exclude-suggested applies heuristic exclusions', async () => {
+    await runHook(
+      'post-tool-use',
+      {
+        session_id: 'exclude-suggested',
+        tool_name: 'Bash',
+        tool_input: { command: 'cat missing.txt' },
+        tool_response: 'cat: missing.txt: No such file or directory',
+      },
+      { CLAUDE_PROJECT_DIR: proj },
+    );
+    const { code } = await runCli(['curate', 'exclude-suggested', 'exclude-suggested', proj], process.cwd());
+    expect(code).toBe(0);
+    const { out } = await runCli(['actions', 'exclude-suggested', proj], process.cwd());
+    expect(out).toContain('inconsistent');
+    expect(out).toContain('\tno\t');
+  });
+
+  it('curate stats prints counts by status', async () => {
+    await runHook(
+      'post-tool-use',
+      {
+        session_id: 'stats-cli',
+        tool_name: 'Read',
+        tool_input: { file_path: 'src/one.ts' },
+        tool_response: 'ok',
+      },
+      { CLAUDE_PROJECT_DIR: proj },
+    );
+    await runCli(['curate', 'confirm', 'stats-cli', '1', proj], process.cwd());
+    const { code, out } = await runCli(['curate', 'stats', 'stats-cli', proj], process.cwd());
+    expect(code).toBe(0);
+    expect(out).toContain('total\t1');
+    expect(out).toContain('status:confirmed\t1');
+  });
 });

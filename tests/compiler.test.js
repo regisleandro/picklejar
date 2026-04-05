@@ -223,4 +223,49 @@ describe('compiler', () => {
     expect(md).toContain('## DISCARDED PATHS');
     expect(md).toContain('wrong assumption');
   });
+
+  it('supports strict profile with confirmed actions only', () => {
+    const s = createSession('strict-profile', '/tmp/p');
+    addAction(s, {
+      id: '1',
+      timestamp: Date.now(),
+      toolName: 'Read',
+      input: {},
+      output: 'alpha',
+      relatedFiles: ['alpha.ts'],
+      curationStatus: 'confirmed',
+    });
+    addAction(s, {
+      id: '2',
+      timestamp: Date.now() + 1,
+      toolName: 'Read',
+      input: {},
+      output: 'beta',
+      relatedFiles: ['beta.ts'],
+    });
+    const md = compileBrainDump(s, { maxTokens: 50_000, curationProfile: 'strict' });
+    expect(md).toContain('alpha.ts');
+    expect(md).not.toContain('beta.ts');
+  });
+
+  it('supports audit profile with discarded paths included in trusted flow', () => {
+    const s = createSession('audit-profile', '/tmp/p');
+    addAction(s, {
+      id: '1',
+      timestamp: Date.now(),
+      toolName: 'Read',
+      input: {},
+      output: 'alpha',
+      relatedFiles: ['alpha.ts'],
+      curationStatus: 'hallucinated',
+      includeInBrainDump: false,
+    });
+    const md = compileBrainDump(s, {
+      maxTokens: 50_000,
+      curationProfile: 'audit',
+      sections: { discardedPaths: true },
+    });
+    expect(md).toContain('alpha.ts');
+    expect(md).toContain('## DISCARDED PATHS');
+  });
 });

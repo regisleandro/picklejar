@@ -1,7 +1,12 @@
 /** @typedef {import('../types/index.d.ts').PicklejarSession} PicklejarSession */
 /** @typedef {import('../types/index.d.ts').TaskNode} TaskNode */
 
-import { actionIsExcludedByCuration, actionPriority } from './curation.js';
+import {
+  actionIncludedInProfile,
+  actionIsExcludedByCuration,
+  actionPriority,
+  normalizeCurationProfile,
+} from './curation.js';
 
 export const DEFAULT_BRAIN_DUMP_SECTIONS = Object.freeze({
   goal: true,
@@ -46,7 +51,7 @@ function actionSummary(action) {
 }
 
 /**
- * @param {{ sections?: Partial<typeof DEFAULT_BRAIN_DUMP_SECTIONS>, excludeActionIndexes?: number[], ignoreCuration?: boolean }} [opts]
+ * @param {{ sections?: Partial<typeof DEFAULT_BRAIN_DUMP_SECTIONS>, excludeActionIndexes?: number[], ignoreCuration?: boolean, curationProfile?: string }} [opts]
  */
 export function normalizeBrainDumpOptions(opts = {}) {
   const sections = {
@@ -56,20 +61,26 @@ export function normalizeBrainDumpOptions(opts = {}) {
   const excludeActionIndexes = [...new Set((opts.excludeActionIndexes ?? [])
     .map((n) => Number(n))
     .filter((n) => Number.isInteger(n) && n > 0))].sort((a, b) => a - b);
-  return { sections, excludeActionIndexes, ignoreCuration: Boolean(opts.ignoreCuration) };
+  return {
+    sections,
+    excludeActionIndexes,
+    ignoreCuration: Boolean(opts.ignoreCuration),
+    curationProfile: normalizeCurationProfile(opts.curationProfile) ?? 'balanced',
+  };
 }
 
 /**
  * @param {PicklejarSession} session
- * @param {{ excludeActionIndexes?: number[], ignoreCuration?: boolean }} [opts]
+ * @param {{ excludeActionIndexes?: number[], ignoreCuration?: boolean, curationProfile?: string }} [opts]
  */
 function filterSessionActions(session, opts = {}) {
   const exclude = new Set(opts.excludeActionIndexes ?? []);
   const ignoreCuration = Boolean(opts.ignoreCuration);
-  if (exclude.size === 0 && ignoreCuration) return session;
+  const profile = normalizeCurationProfile(opts.curationProfile) ?? 'balanced';
+  if (exclude.size === 0 && ignoreCuration && profile === 'balanced') return session;
   const actions = (session.actions ?? []).filter((action, idx) => {
     if (exclude.has(idx + 1)) return false;
-    if (!ignoreCuration && actionIsExcludedByCuration(action)) return false;
+    if (!actionIncludedInProfile(action, profile, ignoreCuration)) return false;
     return true;
   });
   const related = new Set(
@@ -149,15 +160,16 @@ function formatTrustedState(session) {
 
 /**
  * @param {PicklejarSession} session
- * @param {{ excludeActionIndexes?: number[], ignoreCuration?: boolean }} [opts]
+ * @param {{ excludeActionIndexes?: number[], ignoreCuration?: boolean, curationProfile?: string }} [opts]
  */
 function collectDiscardedActions(session, opts = {}) {
   const exclude = new Set(opts.excludeActionIndexes ?? []);
   const ignoreCuration = Boolean(opts.ignoreCuration);
-  if (ignoreCuration) return [];
+  const profile = normalizeCurationProfile(opts.curationProfile) ?? 'balanced';
+  if (ignoreCuration || profile === 'audit') return [];
   return (session.actions ?? [])
     .map((action, idx) => ({ action, index: idx + 1 }))
-    .filter(({ action, index }) => exclude.has(index) || actionIsExcludedByCuration(action));
+    .filter(({ action, index }) => exclude.has(index) || !actionIncludedInProfile(action, profile, false));
 }
 
 /**
@@ -166,9 +178,9 @@ function collectDiscardedActions(session, opts = {}) {
  */
 export function compileBrainDump(session, opts = {}) {
   const maxTokens = opts.maxTokens ?? 30_000;
-  const { sections, excludeActionIndexes, ignoreCuration } = normalizeBrainDumpOptions(opts);
-  const filteredSession = filterSessionActions(session, { excludeActionIndexes, ignoreCuration });
-  const discardedActions = collectDiscardedActions(session, { excludeActionIndexes, ignoreCuration });
+  const { sections, excludeActionIndexes, ignoreCuration, curationProfile } = normalizeBrainDumpOptions(opts);
+  const filteredSession = filterSessionActions(session, { excludeActionIndexes, ignoreCuration, curationProfile });
+  const discardedActions = collectDiscardedActions(session, { excludeActionIndexes, ignoreCuration, curationProfile });
   const lines = [];
 
   lines.push(`# [PICKLEJAR RESUME] Session ${filteredSession.sessionId}`);

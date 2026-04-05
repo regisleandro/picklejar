@@ -10,11 +10,14 @@ import { loadSnapshot, listSnapshots, readSnapshotFile, saveSnapshot } from './c
 import { compileBrainDump, listSelectableActions } from './core/compiler.js';
 import { loadConfig } from './core/config.js';
 import {
+  CURATION_PROFILES,
   CURATION_STATUSES,
   EXCLUDED_CURATION_STATUSES,
   mutateActionsByIndexes,
+  normalizeCurationProfile,
   normalizeCurationStatus,
   suggestCurationForSession,
+  summarizeCurationStats,
 } from './core/curation.js';
 import { picklejarRoot, forceResumePath, resumeContextPath, snapshotsDir } from './core/paths.js';
 import { summarizeSessionForList } from './core/list-summary.js';
@@ -224,7 +227,7 @@ async function promptForExcludedActions(session) {
 }
 
 function curationShortcutHelp() {
-  return 'Keys: up/down move, x discard, c confirm, h hallucination, i inconsistent, d dead end, r reset, enter save, q cancel.';
+  return 'Keys: up/down move, x discard, c confirm, h hallucination, i inconsistent, d dead end, r reset, a approve visible, e exclude suggested, enter save, q cancel.';
 }
 
 /**
@@ -249,9 +252,27 @@ function renderReviewSelector(rows, cursor) {
 
 /**
  * @param {import('./types/index.d.ts').PicklejarSession} session
+ * @param {'suggested' | 'unreviewed' | 'all'} scope
  */
-async function reviewActionsInteractively(session) {
+function getReviewRows(session, scope = 'suggested') {
   const rows = listSelectableActions(session);
+  const suggestedIds = new Set(suggestCurationForSession(session).map((row) => row.id));
+  const filtered = rows.filter((row) => {
+    if (scope === 'all') return true;
+    if (scope === 'unreviewed') return row.curationStatus === 'default';
+    return suggestedIds.has(row.id);
+  });
+  if (scope === 'suggested' && filtered.length === 0) {
+    return rows.filter((row) => row.curationStatus === 'default');
+  }
+  return filtered;
+}
+
+/**
+ * @param {import('./types/index.d.ts').PicklejarSession} session
+ */
+async function reviewActionsInteractively(session, scope = 'suggested') {
+  const rows = getReviewRows(session, scope);
   if (!rows.length) {
     console.log('No recorded actions.');
     return false;
@@ -271,7 +292,8 @@ async function reviewActionsInteractively(session) {
       if (!indexes.length) return false;
       const normalized = normalizeCurationStatus(tag);
       if (!normalized) return false;
-      mutateActionsByIndexes(session, indexes, (action) => {
+      const allowedIndexes = new Set(rows.map((row) => row.index));
+      mutateActionsByIndexes(session, indexes.filter((index) => allowedIndexes.has(index)), (action) => {
         if (normalized === 'default') {
           delete action.includeInBrainDump;
           delete action.curationStatus;
@@ -297,7 +319,7 @@ async function reviewActionsInteractively(session) {
     const redraw = () => {
       readlineUi.cursorTo(stdout, 0, 0);
       readlineUi.clearScreenDown(stdout);
-      stdout.write(renderReviewSelector(listSelectableActions(session), cursor));
+      stdout.write(renderReviewSelector(getReviewRows(session, scope), cursor));
     };
 
     const cleanup = () => {
@@ -314,7 +336,9 @@ async function reviewActionsInteractively(session) {
     };
 
     const applyTag = (tag) => {
-      const action = session.actions?.[cursor];
+      const currentRows = getReviewRows(session, scope);
+      const current = currentRows[cursor];
+      const action = current ? session.actions?.[current.index - 1] : null;
       if (!action) return;
       if (tag === 'default') {
         delete action.includeInBrainDump;
@@ -327,6 +351,26 @@ async function reviewActionsInteractively(session) {
       action.curatedAt = Date.now();
       action.curatedBy = 'cli';
       changed = true;
+    };
+
+    const applyBulk = (kind) => {
+      const currentRows = getReviewRows(session, scope);
+      for (const row of currentRows) {
+        const action = session.actions?.[row.index - 1];
+        if (!action) continue;
+        if (kind === 'approve-visible') {
+          action.curationStatus = 'confirmed';
+          action.includeInBrainDump = true;
+        } else if (kind === 'exclude-suggested') {
+          const suggested = suggestCurationForSession(session).find((entry) => entry.id === action.id);
+          if (!suggested) continue;
+          action.curationStatus = suggested.suggestedStatus;
+          action.includeInBrainDump = false;
+        }
+        action.curatedAt = Date.now();
+        action.curatedBy = 'cli';
+        changed = true;
+      }
     };
 
     const onData = (chunk) => {
@@ -373,13 +417,25 @@ async function reviewActionsInteractively(session) {
         redraw();
         return;
       }
+      if (key === 'a') {
+        applyBulk('approve-visible');
+        redraw();
+        return;
+      }
+      if (key === 'e') {
+        applyBulk('exclude-suggested');
+        redraw();
+        return;
+      }
       if (key === '\u001b[A' || key === 'k') {
-        cursor = cursor > 0 ? cursor - 1 : rows.length - 1;
+        const currentRows = getReviewRows(session, scope);
+        cursor = cursor > 0 ? cursor - 1 : Math.max(0, currentRows.length - 1);
         redraw();
         return;
       }
       if (key === '\u001b[B' || key === 'j') {
-        cursor = cursor < rows.length - 1 ? cursor + 1 : 0;
+        const currentRows = getReviewRows(session, scope);
+        cursor = cursor < currentRows.length - 1 ? cursor + 1 : 0;
         redraw();
       }
     };
@@ -401,13 +457,18 @@ async function resolveBrainDumpOptions(session, opts) {
   const cliExcluded = parseActionIndexes(typeof opts.excludeActions === 'string' ? opts.excludeActions : '');
   const interactiveExcluded = opts.interactiveActions ? await promptForExcludedActions(session) : [];
   const excludeActionIndexes = [...new Set([...cliExcluded, ...interactiveExcluded])].sort((a, b) => a - b);
+  const curationProfile = normalizeCurationProfile(typeof opts.profile === 'string' ? opts.profile : '');
+  if (typeof opts.profile === 'string' && !curationProfile) {
+    throw new Error(`Invalid profile. Use one of: ${CURATION_PROFILES.join(', ')}`);
+  }
   return {
     sections: {
       ...sectionsFromCommandOptions(opts),
-      discardedPaths: Boolean(opts.withDiscardedPaths),
+      discardedPaths: Boolean(opts.withDiscardedPaths) || curationProfile === 'audit',
     },
     excludeActionIndexes,
     ignoreCuration: Boolean(opts.ignoreCuration),
+    curationProfile: curationProfile ?? 'balanced',
   };
 }
 
@@ -428,6 +489,7 @@ function addBrainDumpFilterOptions(cmd) {
     .option('--exclude-actions <indexes>', 'comma-separated 1-based action indexes to exclude from actions/history')
     .option('--interactive-actions', 'interactively choose action indexes to exclude from actions/history using keyboard controls')
     .option('--ignore-curation', 'ignore persisted curation metadata and include all stored actions by default')
+    .option('--profile <name>', `curation profile: ${CURATION_PROFILES.join(', ')}`)
     .option('--with-discarded-paths', 'include a compact DISCARDED PATHS section in the generated summary')
     .option('--list-actions', 'print selectable action indexes and exit');
 }
@@ -571,6 +633,28 @@ function registerCurateCommand(operation, updater) {
   });
 }
 
+/**
+ * @param {string} id
+ * @param {string} projectDir
+ * @param {(session: import('./types/index.d.ts').PicklejarSession) => number} mutator
+ * @param {string} summary
+ */
+async function runSessionCurationMutation(id, projectDir, mutator, summary) {
+  const loaded = await loadSnapshot(projectDir, id);
+  if (!loaded) {
+    console.error('Session not found');
+    process.exitCode = 1;
+    return;
+  }
+  const changed = mutator(loaded.session);
+  if (changed === 0) {
+    console.log('No actions updated.');
+    return;
+  }
+  await saveSnapshot(loaded.session);
+  console.log(`${summary} updated ${changed} action(s) on session ${loaded.session.sessionId}`);
+}
+
 registerCurateCommand('exclude', (action) => {
   action.includeInBrainDump = false;
   if (!EXCLUDED_CURATION_STATUSES.has(action.curationStatus ?? 'default')) {
@@ -608,6 +692,123 @@ registerCurateCommand('reset', (action) => {
 });
 
 curate
+  .command('approve-unsuggested')
+  .argument('<id>', 'session id')
+  .argument('[dir]', 'project directory', process.cwd())
+  .description('Mark unreviewed actions without heuristic warnings as confirmed')
+  .action(async (id, dir) => {
+    const projectDir = path.resolve(dir);
+    await runSessionCurationMutation(id, projectDir, (session) => {
+      const suggested = new Set(suggestCurationForSession(session).map((row) => row.id));
+      let changed = 0;
+      for (const action of session.actions ?? []) {
+        if ((action.curationStatus ?? 'default') !== 'default') continue;
+        if (suggested.has(action.id)) continue;
+        action.curationStatus = 'confirmed';
+        action.includeInBrainDump = true;
+        action.curatedAt = Date.now();
+        action.curatedBy = 'cli';
+        changed += 1;
+      }
+      if (changed) session.lastUpdatedAt = Date.now();
+      return changed;
+    }, 'approve-unsuggested');
+  });
+
+curate
+  .command('exclude-suggested')
+  .argument('<id>', 'session id')
+  .argument('[dir]', 'project directory', process.cwd())
+  .description('Apply heuristic suggestions and exclude the suggested actions from the dump')
+  .action(async (id, dir) => {
+    const projectDir = path.resolve(dir);
+    await runSessionCurationMutation(id, projectDir, (session) => {
+      const suggestions = suggestCurationForSession(session);
+      let changed = 0;
+      for (const suggestion of suggestions) {
+        const action = session.actions?.find((entry) => entry.id === suggestion.id);
+        if (!action) continue;
+        action.curationStatus = suggestion.suggestedStatus;
+        action.includeInBrainDump = false;
+        action.curatedAt = Date.now();
+        action.curatedBy = 'cli';
+        changed += 1;
+      }
+      if (changed) session.lastUpdatedAt = Date.now();
+      return changed;
+    }, 'exclude-suggested');
+  });
+
+curate
+  .command('confirm')
+  .argument('<id>', 'session id')
+  .argument('<indexes>', 'comma-separated 1-based action indexes')
+  .argument('[dir]', 'project directory', process.cwd())
+  .description('Mark selected actions as confirmed and included in the dump')
+  .action(async (id, indexesRaw, dir) => {
+    const projectDir = path.resolve(dir);
+    const indexes = parseActionIndexes(indexesRaw);
+    if (!indexes.length) {
+      console.error('No valid action indexes supplied');
+      process.exitCode = 1;
+      return;
+    }
+    await runSessionCurationMutation(id, projectDir, (session) => mutateActionsByIndexes(session, indexes, (action) => {
+      action.curationStatus = 'confirmed';
+      action.includeInBrainDump = true;
+      action.curatedAt = Date.now();
+      action.curatedBy = 'cli';
+    }), 'confirm');
+  });
+
+curate
+  .command('apply-suggestions')
+  .argument('<id>', 'session id')
+  .argument('[dir]', 'project directory', process.cwd())
+  .description('Apply heuristic suggestions without forcing inclusion or exclusion policy changes beyond the suggested status')
+  .action(async (id, dir) => {
+    const projectDir = path.resolve(dir);
+    await runSessionCurationMutation(id, projectDir, (session) => {
+      const suggestions = suggestCurationForSession(session);
+      let changed = 0;
+      for (const suggestion of suggestions) {
+        const action = session.actions?.find((entry) => entry.id === suggestion.id);
+        if (!action) continue;
+        action.curationStatus = suggestion.suggestedStatus;
+        action.includeInBrainDump = !EXCLUDED_CURATION_STATUSES.has(suggestion.suggestedStatus);
+        action.curatedAt = Date.now();
+        action.curatedBy = 'cli';
+        changed += 1;
+      }
+      if (changed) session.lastUpdatedAt = Date.now();
+      return changed;
+    }, 'apply-suggestions');
+  });
+
+curate
+  .command('stats')
+  .argument('<id>', 'session id')
+  .argument('[dir]', 'project directory', process.cwd())
+  .description('Show curation statistics for a session')
+  .action(async (id, dir) => {
+    const projectDir = path.resolve(dir);
+    const loaded = await loadSnapshot(projectDir, id);
+    if (!loaded) {
+      console.error('Session not found');
+      process.exitCode = 1;
+      return;
+    }
+    const stats = summarizeCurationStats(loaded.session);
+    console.log(`total\t${stats.total}`);
+    console.log(`included\t${stats.included}`);
+    console.log(`excluded\t${stats.excluded}`);
+    console.log(`suggested\t${stats.suggested}`);
+    for (const status of CURATION_STATUSES) {
+      console.log(`status:${status}\t${stats.byStatus[status]}`);
+    }
+  });
+
+curate
   .command('suggest')
   .argument('<id>', 'session id')
   .argument('[dir]', 'project directory', process.cwd())
@@ -636,8 +837,9 @@ curate
   .command('review')
   .argument('<id>', 'session id')
   .argument('[dir]', 'project directory', process.cwd())
+  .option('--scope <scope>', 'review scope: suggested, unreviewed, all', 'suggested')
   .description('Interactively review actions and persist curation metadata')
-  .action(async (id, dir) => {
+  .action(async (id, dir, cmd) => {
     const projectDir = path.resolve(dir);
     const loaded = await loadSnapshot(projectDir, id);
     if (!loaded) {
@@ -645,7 +847,13 @@ curate
       process.exitCode = 1;
       return;
     }
-    const changed = await reviewActionsInteractively(loaded.session);
+    const scope = String(cmd.scope || 'suggested');
+    if (!['suggested', 'unreviewed', 'all'].includes(scope)) {
+      console.error('Invalid review scope. Use one of: suggested, unreviewed, all');
+      process.exitCode = 1;
+      return;
+    }
+    const changed = await reviewActionsInteractively(loaded.session, /** @type {'suggested' | 'unreviewed' | 'all'} */ (scope));
     if (!changed) {
       console.log('Review canceled or no changes applied.');
       return;
