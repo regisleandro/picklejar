@@ -14,6 +14,7 @@ import {
   EXCLUDED_CURATION_STATUSES,
   mutateActionsByIndexes,
   normalizeCurationStatus,
+  suggestCurationForSession,
 } from './core/curation.js';
 import { picklejarRoot, forceResumePath, resumeContextPath, snapshotsDir } from './core/paths.js';
 import { summarizeSessionForList } from './core/list-summary.js';
@@ -222,6 +223,176 @@ async function promptForExcludedActions(session) {
   });
 }
 
+function curationShortcutHelp() {
+  return 'Keys: up/down move, x discard, c confirm, h hallucination, i inconsistent, d dead end, r reset, enter save, q cancel.';
+}
+
+/**
+ * @param {ReturnType<typeof listSelectableActions>} rows
+ * @param {number} cursor
+ */
+function renderReviewSelector(rows, cursor) {
+  const lines = [
+    'Review actions and persist curation metadata.',
+    curationShortcutHelp(),
+    '',
+  ];
+  for (let i = 0; i < rows.length; i += 1) {
+    const row = rows[i];
+    const pointer = i === cursor ? '>' : ' ';
+    lines.push(
+      `${pointer} ${row.index}. [${row.toolName}] ${new Date(row.timestamp).toISOString()} status=${row.curationStatus} include=${row.includeInBrainDump ? 'yes' : 'no'} ${row.summary}`,
+    );
+  }
+  return lines.join('\n');
+}
+
+/**
+ * @param {import('./types/index.d.ts').PicklejarSession} session
+ */
+async function reviewActionsInteractively(session) {
+  const rows = listSelectableActions(session);
+  if (!rows.length) {
+    console.log('No recorded actions.');
+    return false;
+  }
+
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    printActionRows(session);
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    try {
+      const answer = await rl.question('Apply curation as "<tag> <indexes>" or blank to cancel: ');
+      const trimmed = answer.trim();
+      if (!trimmed) return false;
+      const firstSpace = trimmed.indexOf(' ');
+      const tag = firstSpace === -1 ? trimmed : trimmed.slice(0, firstSpace);
+      const indexesRaw = firstSpace === -1 ? '' : trimmed.slice(firstSpace + 1);
+      const indexes = parseActionIndexes(indexesRaw);
+      if (!indexes.length) return false;
+      const normalized = normalizeCurationStatus(tag);
+      if (!normalized) return false;
+      mutateActionsByIndexes(session, indexes, (action) => {
+        if (normalized === 'default') {
+          delete action.includeInBrainDump;
+          delete action.curationStatus;
+        } else {
+          action.curationStatus = normalized;
+          action.includeInBrainDump = !EXCLUDED_CURATION_STATUSES.has(normalized);
+        }
+        action.curatedAt = Date.now();
+        action.curatedBy = 'cli';
+      });
+      return true;
+    } finally {
+      rl.close();
+    }
+  }
+
+  const stdin = process.stdin;
+  const stdout = process.stdout;
+  let cursor = 0;
+  let changed = false;
+
+  return await new Promise((resolve) => {
+    const redraw = () => {
+      readlineUi.cursorTo(stdout, 0, 0);
+      readlineUi.clearScreenDown(stdout);
+      stdout.write(renderReviewSelector(listSelectableActions(session), cursor));
+    };
+
+    const cleanup = () => {
+      stdin.off('data', onData);
+      if (stdin.isTTY) stdin.setRawMode(false);
+      stdout.write('\x1b[?25h');
+      stdout.write('\n');
+      stdin.pause();
+    };
+
+    const finish = (persist) => {
+      cleanup();
+      resolve(persist ? changed : false);
+    };
+
+    const applyTag = (tag) => {
+      const action = session.actions?.[cursor];
+      if (!action) return;
+      if (tag === 'default') {
+        delete action.includeInBrainDump;
+        delete action.curationStatus;
+        delete action.curationNote;
+      } else {
+        action.curationStatus = tag;
+        action.includeInBrainDump = !EXCLUDED_CURATION_STATUSES.has(tag);
+      }
+      action.curatedAt = Date.now();
+      action.curatedBy = 'cli';
+      changed = true;
+    };
+
+    const onData = (chunk) => {
+      const key = String(chunk);
+      if (key === '\u0003') {
+        cleanup();
+        process.exit(130);
+      }
+      if (key === 'q') {
+        finish(false);
+        return;
+      }
+      if (key === '\r' || key === '\n') {
+        finish(true);
+        return;
+      }
+      if (key === 'x') {
+        applyTag('discarded');
+        redraw();
+        return;
+      }
+      if (key === 'c') {
+        applyTag('confirmed');
+        redraw();
+        return;
+      }
+      if (key === 'h') {
+        applyTag('hallucinated');
+        redraw();
+        return;
+      }
+      if (key === 'i') {
+        applyTag('inconsistent');
+        redraw();
+        return;
+      }
+      if (key === 'd') {
+        applyTag('dead_end');
+        redraw();
+        return;
+      }
+      if (key === 'r') {
+        applyTag('default');
+        redraw();
+        return;
+      }
+      if (key === '\u001b[A' || key === 'k') {
+        cursor = cursor > 0 ? cursor - 1 : rows.length - 1;
+        redraw();
+        return;
+      }
+      if (key === '\u001b[B' || key === 'j') {
+        cursor = cursor < rows.length - 1 ? cursor + 1 : 0;
+        redraw();
+      }
+    };
+
+    stdout.write('\x1b[?25l');
+    stdin.setEncoding('utf8');
+    stdin.setRawMode(true);
+    stdin.resume();
+    stdin.on('data', onData);
+    redraw();
+  });
+}
+
 /**
  * @param {import('./types/index.d.ts').PicklejarSession} session
  * @param {Record<string, unknown>} opts
@@ -231,7 +402,10 @@ async function resolveBrainDumpOptions(session, opts) {
   const interactiveExcluded = opts.interactiveActions ? await promptForExcludedActions(session) : [];
   const excludeActionIndexes = [...new Set([...cliExcluded, ...interactiveExcluded])].sort((a, b) => a - b);
   return {
-    sections: sectionsFromCommandOptions(opts),
+    sections: {
+      ...sectionsFromCommandOptions(opts),
+      discardedPaths: Boolean(opts.withDiscardedPaths),
+    },
     excludeActionIndexes,
     ignoreCuration: Boolean(opts.ignoreCuration),
   };
@@ -254,6 +428,7 @@ function addBrainDumpFilterOptions(cmd) {
     .option('--exclude-actions <indexes>', 'comma-separated 1-based action indexes to exclude from actions/history')
     .option('--interactive-actions', 'interactively choose action indexes to exclude from actions/history using keyboard controls')
     .option('--ignore-curation', 'ignore persisted curation metadata and include all stored actions by default')
+    .option('--with-discarded-paths', 'include a compact DISCARDED PATHS section in the generated summary')
     .option('--list-actions', 'print selectable action indexes and exit');
 }
 
@@ -431,6 +606,53 @@ registerCurateCommand('reset', (action) => {
   delete action.curatedAt;
   delete action.curatedBy;
 });
+
+curate
+  .command('suggest')
+  .argument('<id>', 'session id')
+  .argument('[dir]', 'project directory', process.cwd())
+  .description('Suggest likely dead ends or inconsistent actions without changing the session')
+  .action(async (id, dir) => {
+    const projectDir = path.resolve(dir);
+    const loaded = await loadSnapshot(projectDir, id);
+    if (!loaded) {
+      console.error('Session not found');
+      process.exitCode = 1;
+      return;
+    }
+    const suggestions = suggestCurationForSession(loaded.session);
+    if (!suggestions.length) {
+      console.log('No curation suggestions.');
+      return;
+    }
+    for (const suggestion of suggestions) {
+      console.log(
+        `${suggestion.index}\t${suggestion.suggestedStatus}\t${suggestion.reason}`,
+      );
+    }
+  });
+
+curate
+  .command('review')
+  .argument('<id>', 'session id')
+  .argument('[dir]', 'project directory', process.cwd())
+  .description('Interactively review actions and persist curation metadata')
+  .action(async (id, dir) => {
+    const projectDir = path.resolve(dir);
+    const loaded = await loadSnapshot(projectDir, id);
+    if (!loaded) {
+      console.error('Session not found');
+      process.exitCode = 1;
+      return;
+    }
+    const changed = await reviewActionsInteractively(loaded.session);
+    if (!changed) {
+      console.log('Review canceled or no changes applied.');
+      return;
+    }
+    await saveSnapshot(loaded.session);
+    console.log(`review updated session ${loaded.session.sessionId}`);
+  });
 
 program
   .command('status')

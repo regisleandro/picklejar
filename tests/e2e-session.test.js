@@ -401,4 +401,38 @@ describe('e2e', () => {
     expect(out).toContain('validated');
     expect(out).toContain('yes');
   });
+
+  it('curate suggest reports likely inconsistent actions', async () => {
+    await runHook(
+      'post-tool-use',
+      {
+        session_id: 'suggest-cli',
+        tool_name: 'Bash',
+        tool_input: { command: 'cat missing.txt' },
+        tool_response: 'cat: missing.txt: No such file or directory',
+      },
+      { CLAUDE_PROJECT_DIR: proj },
+    );
+    const { code, out } = await runCli(['curate', 'suggest', 'suggest-cli', proj], process.cwd());
+    expect(code).toBe(0);
+    expect(out).toContain('inconsistent');
+    expect(out).toContain('failure keywords detected');
+  });
+
+  it('curate review supports non-tty fallback prompts', async () => {
+    await runHook(
+      'post-tool-use',
+      {
+        session_id: 'review-cli',
+        tool_name: 'Read',
+        tool_input: { file_path: 'src/review.ts' },
+        tool_response: 'ok',
+      },
+      { CLAUDE_PROJECT_DIR: proj },
+    );
+    const { code } = await runCli(['curate', 'review', 'review-cli', proj], process.cwd(), 'confirmed 1\n');
+    expect(code).toBe(0);
+    const { out } = await runCli(['actions', 'review-cli', proj], process.cwd());
+    expect(out).toContain('confirmed');
+  });
 });

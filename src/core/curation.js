@@ -65,3 +65,45 @@ export function mutateActionsByIndexes(session, indexes, updater) {
   if (changed > 0) session.lastUpdatedAt = Date.now();
   return changed;
 }
+
+/**
+ * @param {import('../types/index.d.ts').PicklejarSession} session
+ */
+export function suggestCurationForSession(session) {
+  const suggestions = [];
+  for (let idx = 0; idx < (session.actions ?? []).length; idx += 1) {
+    const action = session.actions[idx];
+    if (action.curationStatus && action.curationStatus !== 'default') continue;
+
+    const output = String(action.output ?? '').trim();
+    if (!output) {
+      suggestions.push({
+        index: idx + 1,
+        id: action.id,
+        suggestedStatus: 'dead_end',
+        reason: 'empty output',
+      });
+      continue;
+    }
+
+    if (/\b(not found|no such file|failed|failure|unable|invalid|exception|traceback|error)\b/i.test(output)) {
+      suggestions.push({
+        index: idx + 1,
+        id: action.id,
+        suggestedStatus: 'inconsistent',
+        reason: 'failure keywords detected in tool output',
+      });
+      continue;
+    }
+
+    if (/\b(reverted|rolled back|undo|undid)\b/i.test(output)) {
+      suggestions.push({
+        index: idx + 1,
+        id: action.id,
+        suggestedStatus: 'dead_end',
+        reason: 'output suggests the attempt was reverted',
+      });
+    }
+  }
+  return suggestions;
+}

@@ -12,6 +12,7 @@ export const DEFAULT_BRAIN_DUMP_SECTIONS = Object.freeze({
   activeFiles: true,
   recentActions: true,
   summarizedHistory: true,
+  discardedPaths: false,
   resumeInstructions: true,
 });
 
@@ -130,12 +131,44 @@ function formatTaskTree(session) {
 
 /**
  * @param {PicklejarSession} session
+ */
+function formatTrustedState(session) {
+  const lines = [
+    `- Trusted actions retained: ${session.actions?.length ?? 0}`,
+    `- Active files retained: ${session.activeFiles?.length ?? 0}`,
+    `- Decisions recorded: ${session.decisions?.length ?? 0}`,
+  ];
+  if (session.lastPlannedAction) {
+    lines.push(`- Next recommended action: ${session.lastPlannedAction}`);
+  }
+  if (session.lastError) {
+    lines.push(`- Interruption reason: ${session.lastError}`);
+  }
+  return lines.join('\n');
+}
+
+/**
+ * @param {PicklejarSession} session
+ * @param {{ excludeActionIndexes?: number[], ignoreCuration?: boolean }} [opts]
+ */
+function collectDiscardedActions(session, opts = {}) {
+  const exclude = new Set(opts.excludeActionIndexes ?? []);
+  const ignoreCuration = Boolean(opts.ignoreCuration);
+  if (ignoreCuration) return [];
+  return (session.actions ?? [])
+    .map((action, idx) => ({ action, index: idx + 1 }))
+    .filter(({ action, index }) => exclude.has(index) || actionIsExcludedByCuration(action));
+}
+
+/**
+ * @param {PicklejarSession} session
  * @param {{ maxTokens?: number }} [opts]
  */
 export function compileBrainDump(session, opts = {}) {
   const maxTokens = opts.maxTokens ?? 30_000;
   const { sections, excludeActionIndexes, ignoreCuration } = normalizeBrainDumpOptions(opts);
   const filteredSession = filterSessionActions(session, { excludeActionIndexes, ignoreCuration });
+  const discardedActions = collectDiscardedActions(session, { excludeActionIndexes, ignoreCuration });
   const lines = [];
 
   lines.push(`# [PICKLEJAR RESUME] Session ${filteredSession.sessionId}`);
@@ -149,6 +182,9 @@ export function compileBrainDump(session, opts = {}) {
     lines.push(filteredSession.goal || '(not captured)');
     lines.push('');
   }
+  lines.push('## CURRENT TRUSTED STATE');
+  lines.push(formatTrustedState(filteredSession));
+  lines.push('');
   if (sections.nextPlannedAction) {
     lines.push('## NEXT PLANNED ACTION');
     lines.push(filteredSession.lastPlannedAction ?? 'Not identified');
@@ -195,7 +231,7 @@ export function compileBrainDump(session, opts = {}) {
 
   if (sections.recentActions) {
     lines.push('');
-    lines.push('## RECENT ACTIONS');
+    lines.push('## RECENT TRUSTED ACTIONS');
     for (const a of detailed) {
       const t = new Date(a.timestamp).toISOString();
       lines.push(`- [${a.toolName}] ${actionSummary(a)} (${t})`);
@@ -204,7 +240,7 @@ export function compileBrainDump(session, opts = {}) {
 
   if (sections.summarizedHistory) {
     lines.push('');
-    lines.push('## SUMMARIZED HISTORY');
+    lines.push('## TRUSTED HISTORY');
     if (older.length === 0) {
       lines.push('_(no older actions beyond the recent ones)_');
     } else {
@@ -215,6 +251,20 @@ export function compileBrainDump(session, opts = {}) {
       lines.push(`${older.length} previous actions — by tool: ${JSON.stringify(byTool)}`);
       for (const a of older) {
         lines.push(`- [${a.toolName}] ${a.relatedFiles?.[0] ?? ''}`.trim());
+      }
+    }
+  }
+
+  if (sections.discardedPaths) {
+    lines.push('');
+    lines.push('## DISCARDED PATHS');
+    if (discardedActions.length === 0) {
+      lines.push('_(none)_');
+    } else {
+      for (const { action, index } of discardedActions) {
+        const status = action.curationStatus ?? 'discarded';
+        const note = action.curationNote ? ` — ${action.curationNote}` : '';
+        lines.push(`- #${index} [${action.toolName}] ${actionSummary(action)} (${status})${note}`);
       }
     }
   }
@@ -276,7 +326,7 @@ function trimToTokenBudget(session, maxTokens, sections) {
   const older = actions.filter((action) => !detailedIds.has(action.id));
 
   if (sections.recentActions) {
-    let actionsText = '## RECENT ACTIONS\n';
+    let actionsText = '## RECENT TRUSTED ACTIONS\n';
     for (const a of detailed) {
       const outputStr = stringifyValue(a.output);
       actionsText += `- [${a.toolName}] ${truncateStr(outputStr, 400)}\n`;
@@ -285,8 +335,12 @@ function trimToTokenBudget(session, maxTokens, sections) {
     body += '\n';
   }
   if (sections.summarizedHistory) {
-    body += '## SUMMARIZED HISTORY\n';
+    body += '## TRUSTED HISTORY\n';
     body += `${older.length} actions — summary omitted to fit token budget.\n`;
+  }
+  if (sections.discardedPaths) {
+    body += '## DISCARDED PATHS\n';
+    body += 'Discarded path summaries omitted to fit token budget.\n';
   }
   if (sections.resumeInstructions) {
     body += '\nINSTRUCTION: Continue from the interruption point. On first user message, acknowledge this resumed context before proceeding.';

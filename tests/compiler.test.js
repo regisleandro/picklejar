@@ -18,7 +18,8 @@ describe('compiler', () => {
     const md = compileBrainDump(s, { maxTokens: 50_000 });
     expect(md).toContain('Test goal');
     expect(md).toContain('USER ORIGINAL INTENT');
-    expect(md).toContain('RECENT ACTIONS');
+    expect(md).toContain('CURRENT TRUSTED STATE');
+    expect(md).toContain('RECENT TRUSTED ACTIONS');
     expect(md).toContain('[PICKLEJAR RESUME]');
   });
 
@@ -68,7 +69,7 @@ describe('compiler', () => {
       },
     });
     expect(md).not.toContain('## ACTIVE FILES');
-    expect(md).not.toContain('## SUMMARIZED HISTORY');
+    expect(md).not.toContain('## TRUSTED HISTORY');
     expect(md).toContain('## USER ORIGINAL INTENT');
   });
 
@@ -201,5 +202,25 @@ describe('compiler', () => {
     }
     const md = compileBrainDump(s, { maxTokens: 180 });
     expect(md).toContain('output-0-');
+  });
+
+  it('can include discarded paths when requested', () => {
+    const s = createSession('discarded-paths', '/tmp/p');
+    addAction(s, {
+      id: '1',
+      timestamp: Date.now(),
+      toolName: 'Edit',
+      input: {},
+      output: 'beta',
+      relatedFiles: ['beta.ts'],
+      curationStatus: 'hallucinated',
+      curationNote: 'wrong assumption',
+    });
+    const md = compileBrainDump(s, {
+      maxTokens: 50_000,
+      sections: { discardedPaths: true },
+    });
+    expect(md).toContain('## DISCARDED PATHS');
+    expect(md).toContain('wrong assumption');
   });
 });
