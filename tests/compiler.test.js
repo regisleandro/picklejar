@@ -129,6 +129,9 @@ describe('compiler', () => {
         timestamp: 1700000000000,
         toolName: 'Read',
         summary: 'a.ts',
+        curationStatus: 'default',
+        includeInBrainDump: true,
+        curationNote: '',
       },
       {
         index: 2,
@@ -136,6 +139,9 @@ describe('compiler', () => {
         timestamp: 1700000000100,
         toolName: 'Bash',
         summary: '{"command":"npm test"}',
+        curationStatus: 'default',
+        includeInBrainDump: true,
+        curationNote: '',
       },
     ]);
   });

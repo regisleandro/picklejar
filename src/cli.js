@@ -9,6 +9,12 @@ import { Command } from 'commander';
 import { loadSnapshot, listSnapshots, readSnapshotFile, saveSnapshot } from './core/snapshot.js';
 import { compileBrainDump, listSelectableActions } from './core/compiler.js';
 import { loadConfig } from './core/config.js';
+import {
+  CURATION_STATUSES,
+  EXCLUDED_CURATION_STATUSES,
+  mutateActionsByIndexes,
+  normalizeCurationStatus,
+} from './core/curation.js';
 import { picklejarRoot, forceResumePath, resumeContextPath, snapshotsDir } from './core/paths.js';
 import { summarizeSessionForList } from './core/list-summary.js';
 import {
@@ -68,7 +74,31 @@ function printSelectableActions(session) {
   }
   console.log('Selectable actions (1-based indexes):');
   for (const row of rows) {
-    console.log(`${row.index}. [${row.toolName}] ${new Date(row.timestamp).toISOString()} ${row.summary}`);
+    console.log(
+      `${row.index}. [${row.toolName}] ${new Date(row.timestamp).toISOString()} ${row.summary} status=${row.curationStatus} include=${row.includeInBrainDump ? 'yes' : 'no'}`,
+    );
+  }
+}
+
+/**
+ * @param {import('./types/index.d.ts').PicklejarSession} session
+ */
+function printActionRows(session) {
+  const rows = listSelectableActions(session);
+  if (!rows.length) {
+    console.log('No recorded actions.');
+    return;
+  }
+  for (const row of rows) {
+    console.log([
+      row.index,
+      new Date(row.timestamp).toISOString(),
+      row.toolName,
+      row.curationStatus,
+      row.includeInBrainDump ? 'yes' : 'no',
+      row.summary,
+      row.curationNote || '',
+    ].join('\t'));
   }
 }
 
@@ -203,6 +233,7 @@ async function resolveBrainDumpOptions(session, opts) {
   return {
     sections: sectionsFromCommandOptions(opts),
     excludeActionIndexes,
+    ignoreCuration: Boolean(opts.ignoreCuration),
   };
 }
 
@@ -222,6 +253,7 @@ function addBrainDumpFilterOptions(cmd) {
     .option('--without-instructions', 'exclude resume instruction text from the generated summary')
     .option('--exclude-actions <indexes>', 'comma-separated 1-based action indexes to exclude from actions/history')
     .option('--interactive-actions', 'interactively choose action indexes to exclude from actions/history using keyboard controls')
+    .option('--ignore-curation', 'ignore persisted curation metadata and include all stored actions by default')
     .option('--list-actions', 'print selectable action indexes and exit');
 }
 
@@ -274,6 +306,131 @@ program
     );
     console.log(JSON.stringify(table, null, 2));
   });
+
+program
+  .command('actions')
+  .description('List recorded actions for a session')
+  .argument('<id>', 'session id')
+  .argument('[dir]', 'project directory', process.cwd())
+  .action(async (id, dir) => {
+    const projectDir = path.resolve(dir);
+    const loaded = await loadSnapshot(projectDir, id);
+    if (!loaded) {
+      console.error('Session not found');
+      process.exitCode = 1;
+      return;
+    }
+    printActionRows(loaded.session);
+  });
+
+const curate = program
+  .command('curate')
+  .description('Persist curation metadata on recorded actions');
+
+/**
+ * @param {'exclude' | 'include' | 'tag' | 'note' | 'reset'} operation
+ * @param {(action: import('./types/index.d.ts').ToolAction, payload?: string) => void} updater
+ */
+function registerCurateCommand(operation, updater) {
+  const cmd = curate
+    .command(operation)
+    .argument('<id>', 'session id')
+    .argument('<indexes>', 'comma-separated 1-based action indexes');
+
+  if (operation === 'tag') {
+    cmd.argument('<value>', 'curation tag');
+  } else if (operation === 'note') {
+    cmd.argument('<value>', 'note text');
+  }
+
+  cmd.argument('[dir]', 'project directory', process.cwd());
+
+  cmd.action(async (id, indexesRaw, valueOrDir, maybeDir) => {
+    const requiresValue = operation === 'tag' || operation === 'note';
+    const value = requiresValue ? valueOrDir : undefined;
+    const projectDir = path.resolve(requiresValue ? (maybeDir || process.cwd()) : (valueOrDir || process.cwd()));
+    const indexes = parseActionIndexes(indexesRaw);
+
+    if (!indexes.length) {
+      console.error('No valid action indexes supplied');
+      process.exitCode = 1;
+      return;
+    }
+
+    const loaded = await loadSnapshot(projectDir, id);
+    if (!loaded) {
+      console.error('Session not found');
+      process.exitCode = 1;
+      return;
+    }
+
+    if (operation === 'tag') {
+      const normalized = normalizeCurationStatus(value);
+      if (!normalized || normalized === 'default') {
+        console.error(`Invalid curation tag. Use one of: ${CURATION_STATUSES.filter((status) => status !== 'default').join(', ')}`);
+        process.exitCode = 1;
+        return;
+      }
+    }
+
+    if (operation === 'note' && !String(value ?? '').trim()) {
+      console.error('Note text is required');
+      process.exitCode = 1;
+      return;
+    }
+
+    const changed = mutateActionsByIndexes(loaded.session, indexes, (action) => {
+      updater(action, value);
+      action.curatedAt = Date.now();
+      action.curatedBy = 'cli';
+    });
+
+    if (changed === 0) {
+      console.error('No matching action indexes found');
+      process.exitCode = 1;
+      return;
+    }
+
+    await saveSnapshot(loaded.session);
+    console.log(`${operation} updated ${changed} action(s) on session ${loaded.session.sessionId}`);
+  });
+}
+
+registerCurateCommand('exclude', (action) => {
+  action.includeInBrainDump = false;
+  if (!EXCLUDED_CURATION_STATUSES.has(action.curationStatus ?? 'default')) {
+    action.curationStatus = 'discarded';
+  }
+});
+
+registerCurateCommand('include', (action) => {
+  action.includeInBrainDump = true;
+  if (EXCLUDED_CURATION_STATUSES.has(action.curationStatus ?? 'default')) {
+    action.curationStatus = 'default';
+  }
+});
+
+registerCurateCommand('tag', (action, value) => {
+  const normalized = normalizeCurationStatus(value) ?? 'default';
+  action.curationStatus = normalized;
+  if (EXCLUDED_CURATION_STATUSES.has(normalized)) {
+    action.includeInBrainDump = false;
+  } else if (action.includeInBrainDump === false) {
+    action.includeInBrainDump = true;
+  }
+});
+
+registerCurateCommand('note', (action, value) => {
+  action.curationNote = String(value).trim();
+});
+
+registerCurateCommand('reset', (action) => {
+  delete action.includeInBrainDump;
+  delete action.curationStatus;
+  delete action.curationNote;
+  delete action.curatedAt;
+  delete action.curatedBy;
+});
 
 program
   .command('status')

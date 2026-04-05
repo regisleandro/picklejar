@@ -324,4 +324,81 @@ describe('e2e', () => {
     expect(ctx).toContain('- [Read] one.ts');
     expect(ctx).not.toContain('- [Read] two.ts');
   });
+
+  it('curate exclude persists and resume respects it by default', async () => {
+    await runHook(
+      'post-tool-use',
+      {
+        session_id: 'curate-resume',
+        tool_name: 'Read',
+        tool_input: { file_path: 'src/keep.ts' },
+        tool_response: 'keep',
+      },
+      { CLAUDE_PROJECT_DIR: proj },
+    );
+    await runHook(
+      'post-tool-use',
+      {
+        session_id: 'curate-resume',
+        tool_name: 'Edit',
+        tool_input: { file_path: 'src/drop.ts' },
+        tool_response: 'drop',
+      },
+      { CLAUDE_PROJECT_DIR: proj },
+    );
+
+    const excluded = await runCli(['curate', 'exclude', 'curate-resume', '2', proj], process.cwd());
+    expect(excluded.code).toBe(0);
+
+    const { code } = await runCli(['resume', 'curate-resume', proj], process.cwd());
+    expect(code).toBe(0);
+    const ctxPath = path.join(proj, '.picklejar', 'resume-context.md');
+    const ctxContent = await fs.readFile(ctxPath, 'utf8');
+    expect(ctxContent).toContain('src/keep.ts');
+    expect(ctxContent).not.toContain('src/drop.ts');
+  });
+
+  it('resume can ignore persisted curation filters', async () => {
+    await runHook(
+      'post-tool-use',
+      {
+        session_id: 'curate-ignore',
+        tool_name: 'Edit',
+        tool_input: { file_path: 'src/drop.ts' },
+        tool_response: 'drop',
+      },
+      { CLAUDE_PROJECT_DIR: proj },
+    );
+    const excluded = await runCli(['curate', 'exclude', 'curate-ignore', '1', proj], process.cwd());
+    expect(excluded.code).toBe(0);
+
+    const { code } = await runCli(['resume', 'curate-ignore', proj, '--ignore-curation'], process.cwd());
+    expect(code).toBe(0);
+    const ctxPath = path.join(proj, '.picklejar', 'resume-context.md');
+    const ctxContent = await fs.readFile(ctxPath, 'utf8');
+    expect(ctxContent).toContain('src/drop.ts');
+  });
+
+  it('actions command prints persisted curation metadata', async () => {
+    await runHook(
+      'post-tool-use',
+      {
+        session_id: 'actions-cli',
+        tool_name: 'Read',
+        tool_input: { file_path: 'src/a.ts' },
+        tool_response: 'ok',
+      },
+      { CLAUDE_PROJECT_DIR: proj },
+    );
+    const tagged = await runCli(['curate', 'tag', 'actions-cli', '1', 'confirmed', proj], process.cwd());
+    expect(tagged.code).toBe(0);
+    const noted = await runCli(['curate', 'note', 'actions-cli', '1', 'validated', proj], process.cwd());
+    expect(noted.code).toBe(0);
+
+    const { code, out } = await runCli(['actions', 'actions-cli', proj], process.cwd());
+    expect(code).toBe(0);
+    expect(out).toContain('confirmed');
+    expect(out).toContain('validated');
+    expect(out).toContain('yes');
+  });
 });

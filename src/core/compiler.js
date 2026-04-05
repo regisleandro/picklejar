@@ -1,6 +1,8 @@
 /** @typedef {import('../types/index.d.ts').PicklejarSession} PicklejarSession */
 /** @typedef {import('../types/index.d.ts').TaskNode} TaskNode */
 
+import { actionIsExcludedByCuration, actionPriority } from './curation.js';
+
 export const DEFAULT_BRAIN_DUMP_SECTIONS = Object.freeze({
   goal: true,
   nextPlannedAction: true,
@@ -12,24 +14,6 @@ export const DEFAULT_BRAIN_DUMP_SECTIONS = Object.freeze({
   summarizedHistory: true,
   resumeInstructions: true,
 });
-
-const EXCLUDED_CURATION_STATUSES = new Set([
-  'discarded',
-  'hallucinated',
-  'inconsistent',
-  'dead_end',
-]);
-
-function actionIsExcludedByCuration(action) {
-  if (action.includeInBrainDump === false) return true;
-  return EXCLUDED_CURATION_STATUSES.has(action.curationStatus ?? 'default');
-}
-
-function actionPriority(action) {
-  if (action.curationStatus === 'confirmed') return 3;
-  if (actionIsExcludedByCuration(action)) return 0;
-  return 2;
-}
 
 /**
  * Very rough token estimate for budgeting output size.
@@ -82,13 +66,21 @@ function filterSessionActions(session, opts = {}) {
   const exclude = new Set(opts.excludeActionIndexes ?? []);
   const ignoreCuration = Boolean(opts.ignoreCuration);
   if (exclude.size === 0 && ignoreCuration) return session;
+  const actions = (session.actions ?? []).filter((action, idx) => {
+    if (exclude.has(idx + 1)) return false;
+    if (!ignoreCuration && actionIsExcludedByCuration(action)) return false;
+    return true;
+  });
+  const related = new Set(
+    actions.flatMap((action) => Array.isArray(action.relatedFiles) ? action.relatedFiles : []),
+  );
   return {
     ...session,
-    actions: (session.actions ?? []).filter((action, idx) => {
-      if (exclude.has(idx + 1)) return false;
-      if (!ignoreCuration && actionIsExcludedByCuration(action)) return false;
-      return true;
-    }),
+    actions,
+    activeFiles:
+      related.size === 0
+        ? session.activeFiles
+        : (session.activeFiles ?? []).filter((file) => related.has(file.path)),
   };
 }
 
@@ -102,6 +94,9 @@ export function listSelectableActions(session) {
     timestamp: action.timestamp,
     toolName: action.toolName,
     summary: actionSummary(action),
+    curationStatus: action.curationStatus ?? 'default',
+    includeInBrainDump: !actionIsExcludedByCuration(action),
+    curationNote: action.curationNote ?? '',
   }));
 }
 
