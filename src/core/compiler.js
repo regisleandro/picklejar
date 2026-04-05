@@ -166,10 +166,14 @@ function collectDiscardedActions(session, opts = {}) {
   const exclude = new Set(opts.excludeActionIndexes ?? []);
   const ignoreCuration = Boolean(opts.ignoreCuration);
   const profile = normalizeCurationProfile(opts.curationProfile) ?? 'balanced';
-  if (ignoreCuration || profile === 'audit') return [];
+  if (ignoreCuration) return [];
   return (session.actions ?? [])
     .map((action, idx) => ({ action, index: idx + 1 }))
-    .filter(({ action, index }) => exclude.has(index) || !actionIncludedInProfile(action, profile, false));
+    .filter(({ action, index }) =>
+      exclude.has(index) ||
+      actionIsExcludedByCuration(action) ||
+      !actionIncludedInProfile(action, profile, false),
+    );
 }
 
 /**
@@ -308,6 +312,7 @@ function trimToTokenBudget(session, maxTokens, sections) {
     headParts.push('**IMPORTANT: You are resuming a previous session. When the user sends their first message, you MUST start by briefly acknowledging you have context from the previous session and summarize what was being worked on before continuing.**\n\n');
   }
   if (sections.goal) headParts.push(`## USER ORIGINAL INTENT\n${session.goal || '(not captured)'}\n\n`);
+  headParts.push(`## CURRENT TRUSTED STATE\n${formatTrustedState(session)}\n\n`);
   if (sections.nextPlannedAction) {
     headParts.push(`## NEXT PLANNED ACTION\n${session.lastPlannedAction ?? 'Not identified'}\n\n`);
   }

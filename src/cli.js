@@ -483,8 +483,8 @@ function addBrainDumpFilterOptions(cmd) {
     .option('--without-progress', 'exclude progress/task tree from the generated summary')
     .option('--without-decisions', 'exclude architecture decisions from the generated summary')
     .option('--without-active-files', 'exclude active file snapshots from the generated summary')
-    .option('--without-recent-actions', 'exclude RECENT ACTIONS section from the generated summary')
-    .option('--without-history', 'exclude SUMMARIZED HISTORY section from the generated summary')
+    .option('--without-recent-actions', 'exclude RECENT TRUSTED ACTIONS section from the generated summary')
+    .option('--without-history', 'exclude TRUSTED HISTORY section from the generated summary')
     .option('--without-instructions', 'exclude resume instruction text from the generated summary')
     .option('--exclude-actions <indexes>', 'comma-separated 1-based action indexes to exclude from actions/history')
     .option('--interactive-actions', 'interactively choose action indexes to exclude from actions/history using keyboard controls')
@@ -950,30 +950,35 @@ const exportCmd = addBrainDumpFilterOptions(program
   .option('-o, --out <file>', 'output .md path (default: .picklejar/export-<id>.md)'));
 
 exportCmd.action(async (id, dir) => {
-  const projectDir = path.resolve(dir);
-  const opts = exportCmd.opts();
-  const outOpt = opts.out;
-  const outPath = outOpt
-    ? path.isAbsolute(outOpt)
-      ? outOpt
-      : path.join(projectDir, outOpt)
-    : path.join(projectDir, '.picklejar', `export-${id}.md`);
-  const loaded = await loadSnapshot(projectDir, id);
-  if (!loaded) {
-    console.error('Session not found');
+  try {
+    const projectDir = path.resolve(dir);
+    const opts = exportCmd.opts();
+    const outOpt = opts.out;
+    const outPath = outOpt
+      ? path.isAbsolute(outOpt)
+        ? outOpt
+        : path.join(projectDir, outOpt)
+      : path.join(projectDir, '.picklejar', `export-${id}.md`);
+    const loaded = await loadSnapshot(projectDir, id);
+    if (!loaded) {
+      console.error('Session not found');
       process.exitCode = 1;
       return;
+    }
+    if (opts.listActions) {
+      printSelectableActions(loaded.session);
+      return;
+    }
+    const cfg = await loadConfig(projectDir);
+    const dumpOptions = await resolveBrainDumpOptions(loaded.session, opts);
+    const md = compileBrainDump(loaded.session, { maxTokens: cfg.maxTokens, ...dumpOptions });
+    await fs.mkdir(path.dirname(outPath), { recursive: true });
+    await fs.writeFile(outPath, md, 'utf8');
+    console.log(`Wrote ${outPath}`);
+  } catch (e) {
+    console.error(/** @type {Error} */ (e).message || e);
+    process.exitCode = 1;
   }
-  if (opts.listActions) {
-    printSelectableActions(loaded.session);
-    return;
-  }
-  const cfg = await loadConfig(projectDir);
-  const dumpOptions = await resolveBrainDumpOptions(loaded.session, opts);
-  const md = compileBrainDump(loaded.session, { maxTokens: cfg.maxTokens, ...dumpOptions });
-  await fs.mkdir(path.dirname(outPath), { recursive: true });
-  await fs.writeFile(outPath, md, 'utf8');
-  console.log(`Wrote ${outPath}`);
 });
 
 const resumeCmd = addBrainDumpFilterOptions(program
@@ -984,41 +989,46 @@ const resumeCmd = addBrainDumpFilterOptions(program
   .argument('[dir]', 'project directory', process.cwd()));
 
 resumeCmd.action(async (idArg, dir) => {
-  const projectDir = path.resolve(dir);
-  const opts = resumeCmd.opts();
-  let sessionId = idArg || opts.id;
-  if (!sessionId) {
-    const rows = await listSnapshots(projectDir);
-    sessionId = rows.at(-1)?.sessionId;
-  }
-  if (!sessionId) {
-    console.error('No session id available');
-    process.exitCode = 1;
-    return;
-  }
-  const loaded = await loadSnapshot(projectDir, sessionId);
-  if (!loaded) {
-    console.error('Session not found');
+  try {
+    const projectDir = path.resolve(dir);
+    const opts = resumeCmd.opts();
+    let sessionId = idArg || opts.id;
+    if (!sessionId) {
+      const rows = await listSnapshots(projectDir);
+      sessionId = rows.at(-1)?.sessionId;
+    }
+    if (!sessionId) {
+      console.error('No session id available');
       process.exitCode = 1;
       return;
-  }
-  if (opts.listActions) {
-    printSelectableActions(loaded.session);
-    return;
-  }
-  const cfg = await loadConfig(projectDir);
-  const dumpOptions = await resolveBrainDumpOptions(loaded.session, opts);
-  const md = compileBrainDump(loaded.session, { maxTokens: cfg.maxTokens, ...dumpOptions });
+    }
+    const loaded = await loadSnapshot(projectDir, sessionId);
+    if (!loaded) {
+      console.error('Session not found');
+        process.exitCode = 1;
+        return;
+    }
+    if (opts.listActions) {
+      printSelectableActions(loaded.session);
+      return;
+    }
+    const cfg = await loadConfig(projectDir);
+    const dumpOptions = await resolveBrainDumpOptions(loaded.session, opts);
+    const md = compileBrainDump(loaded.session, { maxTokens: cfg.maxTokens, ...dumpOptions });
 
-  await fs.mkdir(picklejarRoot(projectDir), { recursive: true });
-  await fs.writeFile(resumeContextPath(projectDir), md, 'utf8');
-  await fs.writeFile(
-    forceResumePath(projectDir),
-    JSON.stringify({ sessionId, at: Date.now() }, null, 2),
-    'utf8',
-  );
-  console.log(`Resume prepared for session ${sessionId}`);
-  console.log(`Run: picklejar start <agent>   (see: picklejar capabilities)`);
+    await fs.mkdir(picklejarRoot(projectDir), { recursive: true });
+    await fs.writeFile(resumeContextPath(projectDir), md, 'utf8');
+    await fs.writeFile(
+      forceResumePath(projectDir),
+      JSON.stringify({ sessionId, at: Date.now() }, null, 2),
+      'utf8',
+    );
+    console.log(`Resume prepared for session ${sessionId}`);
+    console.log(`Run: picklejar start <agent>   (see: picklejar capabilities)`);
+  } catch (e) {
+    console.error(/** @type {Error} */ (e).message || e);
+    process.exitCode = 1;
+  }
 });
 
 program

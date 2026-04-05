@@ -1,6 +1,6 @@
 {
   "name": "picklejar-agent",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Persist AI coding agent sessions via hooks — snapshots and brain-dump resume (multi-agent)",
   "type": "module",
   "bin": {

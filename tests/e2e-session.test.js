@@ -548,4 +548,21 @@ describe('e2e', () => {
     expect(out).toContain('total\t1');
     expect(out).toContain('status:confirmed\t1');
   });
+
+  it('export reports invalid profile cleanly', async () => {
+    await runHook(
+      'post-tool-use',
+      {
+        session_id: 'invalid-profile',
+        tool_name: 'Read',
+        tool_input: { file_path: 'src/a.ts' },
+        tool_response: 'ok',
+      },
+      { CLAUDE_PROJECT_DIR: proj },
+    );
+    const { code, err } = await runCli(['export', 'invalid-profile', proj, '--profile', 'nope'], process.cwd());
+    expect(code).toBe(1);
+    expect(err).toContain('Invalid profile');
+    expect(err).not.toContain('file:///');
+  });
 });

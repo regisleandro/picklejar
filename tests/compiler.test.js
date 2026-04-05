@@ -259,6 +259,7 @@ describe('compiler', () => {
       relatedFiles: ['alpha.ts'],
       curationStatus: 'hallucinated',
       includeInBrainDump: false,
+      curationNote: 'kept only for audit',
     });
     const md = compileBrainDump(s, {
       maxTokens: 50_000,
@@ -267,5 +268,23 @@ describe('compiler', () => {
     });
     expect(md).toContain('alpha.ts');
     expect(md).toContain('## DISCARDED PATHS');
+    expect(md).toContain('kept only for audit');
+  });
+
+  it('keeps current trusted state in trimmed dumps', () => {
+    const s = createSession('trimmed-state', '/tmp/p');
+    s.goal = 'Keep trusted state visible';
+    for (let i = 0; i < 10; i += 1) {
+      addAction(s, {
+        id: String(i),
+        timestamp: Date.now() + i,
+        toolName: 'Read',
+        input: {},
+        output: 'x'.repeat(800),
+        relatedFiles: [`file-${i}.ts`],
+      });
+    }
+    const md = compileBrainDump(s, { maxTokens: 120 });
+    expect(md).toContain('## CURRENT TRUSTED STATE');
   });
 });
