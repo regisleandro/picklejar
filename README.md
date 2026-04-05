@@ -67,7 +67,7 @@ picklejar start claude    # or: cursor, cn, opencode, kilo, aider, …
 | `picklejar export <id> [dir] [-o file.md] [filters...]` | Write brain dump markdown |
 | `picklejar resume [id] [dir] [filters...]` | Write `resume-context.md` + `force-resume.json` |
 | `picklejar start [agent] [dir]` | Inject resume context and launch the agent CLI when available |
-| `picklejar curate <subcommand> ...` | Persist curation metadata (`exclude`, `include`, `tag`, `note`, `reset`, `review`, `suggest`) |
+| `picklejar curate <subcommand> ...` | Persist curation metadata (`exclude`, `include`, `tag`, `note`, `reset`, `review`, `suggest`, `confirm`, `approve-unsuggested`, `exclude-suggested`, `apply-suggestions`, `stats`) |
 | `picklejar goal <text> [dir]` | Set goal on latest session |
 | `picklejar decide <desc> <reason> [dir]` | Record architecture decision |
 | `picklejar clean [--keep N] [dir]` | Prune old snapshots per session |
@@ -104,6 +104,8 @@ picklejar resume session-123 --interactive-actions
 picklejar export session-123 --list-actions
 picklejar resume session-123 --ignore-curation
 picklejar export session-123 --with-discarded-paths
+picklejar resume session-123 --profile strict
+picklejar export session-123 --profile audit
 ```
 
 Available section filters:
@@ -118,6 +120,7 @@ Available section filters:
 - `--without-history`
 - `--without-instructions`
 - `--with-discarded-paths`
+- `--profile balanced|strict|audit|recovery`
 
 Action filtering details:
 
@@ -125,6 +128,10 @@ Action filtering details:
 - `--exclude-actions 2,4,9` removes specific actions from `RECENT TRUSTED ACTIONS` and `TRUSTED HISTORY` in the generated summary.
 - `--interactive-actions` opens a keyboard selector in TTY terminals (`up/down`, `space`, `a`, `n`, `enter`, `q`) and falls back to the prompt-based index input outside TTY.
 - persisted curation is applied by default; use `--ignore-curation` to include all recorded actions again.
+- `--profile balanced` keeps trusted/default work and excludes curated bad paths.
+- `--profile strict` includes only `confirmed` actions.
+- `--profile audit` includes everything and enables `DISCARDED PATHS`.
+- `--profile recovery` keeps `confirmed`, `default`, and `dead_end`, but excludes `hallucinated` and `inconsistent`.
 - Filtering only affects the generated markdown; the underlying snapshot remains unchanged.
 
 ## Curating a session
@@ -140,6 +147,9 @@ picklejar curate tag session-123 7 hallucinated
 picklejar curate note session-123 7 "assumed a file that does not exist"
 picklejar curate review session-123
 picklejar curate suggest session-123
+picklejar curate approve-unsuggested session-123
+picklejar curate exclude-suggested session-123
+picklejar curate stats session-123
 ```
 
 Curation status semantics:
@@ -150,6 +160,15 @@ Curation status semantics:
 - `inconsistent` means the action produced contradictory or clearly failing output.
 - `dead_end` means the action reflects an abandoned path or reverted attempt.
 - `reset` clears all persisted curation metadata for the selected actions.
+
+Batch workflows:
+
+- `confirm` marks selected actions as trusted and always includable.
+- `approve-unsuggested` confirms all unreviewed actions that were not flagged by heuristics.
+- `exclude-suggested` applies heuristic warnings and excludes those actions from handoff.
+- `apply-suggestions` applies heuristic statuses without extra manual indexing.
+- `stats` prints totals, included/excluded counts, heuristic suggestion count, and per-status counts.
+- `review --scope suggested|unreviewed|all` narrows the interactive review queue.
 
 The generated brain dump now emphasizes:
 
