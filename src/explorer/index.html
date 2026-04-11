@@ -67,7 +67,6 @@
       flex-direction: column;
     }
 
-    /* ── Header ── */
     .app-header {
       display: flex;
       align-items: center;
@@ -158,7 +157,6 @@
     .icon-btn:hover { color: var(--text); border-color: var(--border); background: var(--surface-hover); }
     .icon-btn svg { display: block; }
 
-    /* ── Layout ── */
     .layout {
       display: grid;
       grid-template-columns: var(--sidebar-w) 1fr;
@@ -189,7 +187,6 @@
       }
     }
 
-    /* ── Sidebar ── */
     .sidebar {
       background: var(--bg-elevated);
       border-right: none;
@@ -302,7 +299,6 @@
       margin-top: 0.2rem;
     }
 
-    /* ── Main column ── */
     .main-column {
       display: flex;
       flex-direction: column;
@@ -330,7 +326,6 @@
       padding-bottom: 1.5rem;
     }
 
-    /* ── Info cards (main area) ── */
     .info-card {
       background: var(--surface-card);
       border: 1px solid var(--border);
@@ -349,7 +344,6 @@
       padding: 0.75rem 1.125rem 1rem;
     }
 
-    /* ── Field rows inside cards ── */
     .field-row {
       display: flex;
       align-items: flex-start;
@@ -404,7 +398,6 @@
       flex-shrink: 0;
     }
 
-    /* ── Timeline ── */
     .timeline {
       border-left: 2px solid var(--border);
       margin-left: 6px;
@@ -438,7 +431,6 @@
       letter-spacing: 0.05em;
     }
 
-    /* ── Markdown body ── */
     .markdown-body { font-size: 0.8125rem; line-height: 1.65; }
     .markdown-body p { margin-top: 0; margin-bottom: 0.875rem; }
     .markdown-body p:last-child { margin-bottom: 0; }
@@ -450,7 +442,6 @@
     .markdown-body strong { font-weight: 600; }
     .markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 { font-weight: 600; margin-top: 1.25rem; margin-bottom: 0.625rem; }
 
-    /* ── Empty state ── */
     .empty-state {
       display: flex;
       flex-direction: column;
@@ -468,7 +459,6 @@
     }
     .empty-state p { margin: 0; font-size: 0.9rem; }
 
-    /* ── Buttons ── */
     .btn {
       font: inherit;
       display: inline-flex;
@@ -499,7 +489,6 @@
     }
     .btn-ghost:hover { background: var(--surface-hover); color: var(--text); border-color: transparent; }
 
-    /* ── Actions footer ── */
     .actions-footer {
       flex-shrink: 0;
       display: flex;
@@ -526,7 +515,6 @@
       justify-content: flex-end;
     }
 
-    /* ── Open-in-agent drawer ── */
     .open-drawer {
       background: var(--bg-elevated);
       border-top: 1px solid var(--border-subtle);
@@ -580,7 +568,6 @@
       margin-top: 0.625rem;
     }
 
-    /* ── Toast ── */
     .toast {
       position: fixed;
       bottom: 1.25rem;
@@ -680,7 +667,6 @@
     }
   })();
 
-  /* ── Theme ── */
   function setTheme(mode) {
     const m = mode === 'light' ? 'light' : 'dark';
     localStorage.setItem(THEME_KEY, m);
@@ -698,7 +684,6 @@
     });
   }
 
-  /* ── Toast ── */
   function toast(msg) {
     const el = $('toast');
     el.textContent = msg;
@@ -706,7 +691,6 @@
     setTimeout(() => el.classList.remove('show'), 2800);
   }
 
-  /* ── Time helpers ── */
   function formatTime(ts) {
     return new Date(ts).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
   }
@@ -736,7 +720,6 @@
     return 'Older';
   }
 
-  /* ── Helpers ── */
   function dotClass(status) {
     if (status === 'ended') return 'dot-ended';
     if (status === 'error') return 'dot-error';
@@ -828,12 +811,10 @@
     }).catch(() => {});
   }
 
-  /* ── Main placeholder ── */
   function setMainContent(html) {
     $('main').innerHTML = '<div class="main-scroll">' + html + '</div>';
   }
 
-  /* ── Load sessions ── */
   async function loadSessions() {
     const r = await apiFetch('/api/sessions');
     if (!r.ok) throw new Error('Failed to load sessions');
@@ -850,7 +831,6 @@
     }
   }
 
-  /* ── Sidebar ── */
   function renderSidebar() {
     const el = $('sidebar');
     el.innerHTML = '';
@@ -904,7 +884,6 @@
     }
   }
 
-  /* ── Select session ── */
   async function selectSession(id) {
     selectedId = id;
     summaryCache = null;
@@ -929,13 +908,11 @@
     }
   }
 
-  /* ── Render detail ── */
   function renderDetail(vm) {
     const goal = vm.goal || vm.title;
     const stLabel = vm.status === 'ended' ? 'completed' : vm.status;
     const files = (vm.activeFiles || []).join(', ');
 
-    /* Executive summary card */
     let execRows = '';
 
     execRows += `
@@ -1021,7 +998,6 @@
       `;
     }
 
-    /* Timeline card */
     let timelineHtml = '';
     for (const row of actionsCache || []) {
       const kind = actionKind(row.toolName);
@@ -1141,14 +1117,6 @@
   loadSessions().catch((e) => {
     $('sidebar').innerHTML = '<p class="error-text" style="padding:1rem 0.875rem;font-size:0.8125rem">' + escapeHtml(String(e.message || e)) + '</p>';
   });
-
-  function escapeHtml(s) {
-    return String(s)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-  }
 })();
   </script>
 </body>

@@ -36,7 +36,6 @@ export function mapSessionStartPayload(payload) {
   const srcRaw = String(any.source ?? any.Source ?? '').toLowerCase();
   const sessionId = String(any.session_id ?? any.sessionId ?? '');
 
-  // Cursor sessionStart: no `source` field
   if (sessionId && !srcRaw) {
     return {
       source: 'startup',

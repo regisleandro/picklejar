@@ -83,9 +83,6 @@ async function main() {
     return;
   }
 
-  // For startup source: additionalContext doesn't work in Claude Code.
-  // Context was injected via instruction files by `picklejar start` — just clean up.
-  // For resume/compact sources: inject via hook output (Claude, Cursor, Continue).
   if (source === 'startup') {
     process.stdout.write(JSON.stringify({}));
   } else {

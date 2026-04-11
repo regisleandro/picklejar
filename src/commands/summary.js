@@ -1,4 +1,4 @@
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { loadSnapshot } from '../core/snapshot.js';
 import { compileHumanSummary } from '../core/human-summary.js';
@@ -9,17 +9,17 @@ import { compileHumanSummary } from '../core/human-summary.js';
 export function copyToClipboard(text) {
   const platform = process.platform;
   if (platform === 'darwin') {
-    execSync('pbcopy', { input: text, stdio: ['pipe', 'ignore', 'pipe'] });
+    execFileSync('pbcopy', [], { input: text, stdio: ['pipe', 'ignore', 'pipe'] });
     return;
   }
   if (platform === 'win32') {
-    execSync('clip', { input: text, stdio: ['pipe', 'ignore', 'pipe'], shell: true });
+    execFileSync('clip', [], { input: text, stdio: ['pipe', 'ignore', 'pipe'] });
     return;
   }
   try {
-    execSync('xclip -selection clipboard', { input: text, stdio: ['pipe', 'ignore', 'pipe'] });
+    execFileSync('xclip', ['-selection', 'clipboard'], { input: text, stdio: ['pipe', 'ignore', 'pipe'] });
   } catch {
-    execSync('xsel --clipboard --input', { input: text, stdio: ['pipe', 'ignore', 'pipe'] });
+    execFileSync('xsel', ['--clipboard', '--input'], { input: text, stdio: ['pipe', 'ignore', 'pipe'] });
   }
 }
 

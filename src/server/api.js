@@ -15,13 +15,24 @@ const markedPath = path.join(path.dirname(require.resolve('marked/package.json')
 const purifyPath = path.join(path.dirname(require.resolve('dompurify')), 'purify.min.js');
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const MAX_JSON_BODY_BYTES = 64 * 1024;
+const COMMON_HEADERS = {
+  'Cache-Control': 'no-store',
+  'Referrer-Policy': 'no-referrer',
+  'X-Content-Type-Options': 'nosniff',
+};
+const HTML_HEADERS = {
+  ...COMMON_HEADERS,
+  'Content-Security-Policy':
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+  'X-Frame-Options': 'DENY',
+};
 
-function corsHeaders() {
-  return {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-  };
+function serializeForInlineScript(value) {
+  return JSON.stringify(value)
+    .replace(/</g, '\\u003c')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
 }
 
 /**
@@ -32,7 +43,7 @@ function corsHeaders() {
 function sendJSON(res, code, data) {
   res.writeHead(code, {
     'Content-Type': 'application/json; charset=utf-8',
-    ...corsHeaders(),
+    ...COMMON_HEADERS,
   });
   res.end(JSON.stringify(data));
 }
@@ -45,7 +56,7 @@ function sendJSON(res, code, data) {
 function sendHTML(res, code, html) {
   res.writeHead(code, {
     'Content-Type': 'text/html; charset=utf-8',
-    ...corsHeaders(),
+    ...HTML_HEADERS,
   });
   res.end(html);
 }
@@ -55,7 +66,7 @@ function sendHTML(res, code, html) {
  * @param {object} bootstrap
  */
 function injectExplorerBootstrap(html, bootstrap) {
-  const script = `<script>window.__PICKLEJAR_EXPLORER__=${JSON.stringify(bootstrap)};</script>`;
+  const script = `<script>window.__PICKLEJAR_EXPLORER__=${serializeForInlineScript(bootstrap)};</script>`;
   return html.replace('<script src="/vendor/marked.js"></script>', `${script}\n  <script src="/vendor/marked.js"></script>`);
 }
 
@@ -84,7 +95,16 @@ function tokenMatches(token, req, url) {
  */
 async function readJsonBody(req) {
   const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
+  let totalBytes = 0;
+  for await (const chunk of req) {
+    totalBytes += chunk.length;
+    if (totalBytes > MAX_JSON_BODY_BYTES) {
+      const err = new Error('Request body too large');
+      err.statusCode = 413;
+      throw err;
+    }
+    chunks.push(chunk);
+  }
   const raw = Buffer.concat(chunks).toString('utf8');
   if (!raw.trim()) return {};
   try {
@@ -218,15 +238,17 @@ export async function createExplorerServer(projectDir, options = {}) {
 
   const server = http.createServer(async (req, res) => {
     if (req.method === 'OPTIONS') {
-      res.writeHead(204, corsHeaders());
+      res.writeHead(204, {
+        Allow: 'GET, POST, OPTIONS',
+        ...COMMON_HEADERS,
+      });
       res.end();
       return;
     }
 
-    const host = req.headers.host || '127.0.0.1';
     let url;
     try {
-      url = new URL(req.url || '/', `http://${host}`);
+      url = new URL(req.url || '/', 'http://127.0.0.1');
     } catch {
       sendJSON(res, 400, { error: 'Bad request' });
       return;
@@ -249,14 +271,20 @@ export async function createExplorerServer(projectDir, options = {}) {
 
       if (req.method === 'GET' && p === '/vendor/marked.js') {
         const data = await fs.readFile(markedPath, 'utf8');
-        res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', ...corsHeaders() });
+        res.writeHead(200, {
+          'Content-Type': 'application/javascript; charset=utf-8',
+          ...COMMON_HEADERS,
+        });
         res.end(data);
         return;
       }
 
       if (req.method === 'GET' && p === '/vendor/dompurify.js') {
         const data = await fs.readFile(purifyPath, 'utf8');
-        res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', ...corsHeaders() });
+        res.writeHead(200, {
+          'Content-Type': 'application/javascript; charset=utf-8',
+          ...COMMON_HEADERS,
+        });
         res.end(data);
         return;
       }
@@ -407,7 +435,13 @@ export async function createExplorerServer(projectDir, options = {}) {
 
       sendJSON(res, 404, { error: 'Not found' });
     } catch (e) {
-      sendJSON(res, 500, { error: String(/** @type {Error} */ (e).message || e) });
+      const err = /** @type {Error & { statusCode?: number }} */ (e);
+      if (err.statusCode) {
+        sendJSON(res, err.statusCode, { error: err.message });
+        return;
+      }
+      console.error('[picklejar explorer]', err);
+      sendJSON(res, 500, { error: 'Internal server error' });
     }
   });
   server.on('close', () => {

@@ -5,30 +5,56 @@ import { createExplorerServer } from '../server/api.js';
 import { openSessionInAgent } from '../core/resume-service.js';
 
 /**
+ * @param {string} commandLine
+ */
+function parseCommandLine(commandLine) {
+  const parts =
+    commandLine.match(/"[^"]*"|'[^']*'|[^\s]+/g)?.map((part) => {
+      if (
+        (part.startsWith('"') && part.endsWith('"')) ||
+        (part.startsWith("'") && part.endsWith("'"))
+      ) {
+        return part.slice(1, -1);
+      }
+      return part;
+    }) ?? [];
+  if (parts.length === 0) {
+    throw new Error('PICKLEJAR_BROWSER is empty');
+  }
+  return { command: parts[0], args: parts.slice(1) };
+}
+
+/**
+ * @param {string} command
+ * @param {string[]} args
+ */
+function spawnDetached(command, args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: 'ignore', detached: true });
+    child.once('error', reject);
+    child.once('spawn', () => {
+      child.unref();
+      resolve();
+    });
+  });
+}
+
+/**
  * @param {string} url
  */
 function openBrowser(url) {
-  return new Promise((resolve, reject) => {
-    const custom = process.env.PICKLEJAR_BROWSER?.trim();
-    if (custom) {
-      const child = spawn(custom, [url], { shell: true, stdio: 'ignore', detached: true });
-      child.unref();
-      child.on('error', reject);
-      resolve();
-      return;
-    }
-    if (process.platform === 'win32') {
-      const child = spawn('cmd', ['/c', 'start', '', url], { stdio: 'ignore', detached: true });
-      child.unref();
-    } else if (process.platform === 'darwin') {
-      const child = spawn('open', [url], { stdio: 'ignore', detached: true });
-      child.unref();
-    } else {
-      const child = spawn('xdg-open', [url], { stdio: 'ignore', detached: true });
-      child.unref();
-    }
-    resolve();
-  });
+  const custom = process.env.PICKLEJAR_BROWSER?.trim();
+  if (custom) {
+    const { command, args } = parseCommandLine(custom);
+    return spawnDetached(command, [...args, url]);
+  }
+  if (process.platform === 'win32') {
+    return spawnDetached('cmd', ['/c', 'start', '', url]);
+  }
+  if (process.platform === 'darwin') {
+    return spawnDetached('open', [url]);
+  }
+  return spawnDetached('xdg-open', [url]);
 }
 
 /**
@@ -85,20 +111,25 @@ export function registerExploreCommand(program) {
       },
     });
 
+    const listenHost = remote ? '0.0.0.0' : '127.0.0.1';
     await new Promise((resolve, reject) => {
       server.once('error', reject);
-      server.listen(port, '127.0.0.1', () => resolve(undefined));
+      server.listen(port, listenHost, () => resolve(undefined));
     });
 
     const addr = /** @type {import('node:net').AddressInfo} */ (server.address());
     const actualPort = addr.port;
-    const baseUrl = `http://127.0.0.1:${actualPort}/?token=${encodeURIComponent(explorerToken)}`;
-    console.log(`Picklejar Explorer running at ${baseUrl}`);
+    const localUrl = `http://127.0.0.1:${actualPort}/?token=${encodeURIComponent(explorerToken)}`;
+    if (remote) {
+      console.log(`Picklejar Explorer listening on 0.0.0.0:${actualPort}`);
+      console.log(`Explorer token: ${explorerToken}`);
+    }
+    console.log(`Picklejar Explorer running at ${localUrl}`);
     console.log('Press Ctrl+C to stop.');
 
     if (!remote) {
       try {
-        await openBrowser(baseUrl);
+        await openBrowser(localUrl);
       } catch {
         /* ignore browser launch failures */
       }

@@ -18,7 +18,6 @@ export function cursorPicklejarHooksDoc() {
   };
 }
 
-/** Same hook graph as Claude Code for Continue CLI settings merge */
 export function continueHooksBlock() {
   return claudeHooksBlock('continue');
 }
