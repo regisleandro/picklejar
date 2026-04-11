@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import http from 'node:http';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -18,6 +18,42 @@ function httpGet(url) {
         resolve({ status: res.statusCode, body });
       });
     }).on('error', reject);
+  });
+}
+
+function httpPost(url, payload) {
+  return httpRequest(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+function httpRequest(url, options = {}) {
+  return new Promise((resolve, reject) => {
+    const body = typeof options.body === 'string' ? options.body : '';
+    const req = http.request(
+      url,
+      {
+        method: options.method || 'GET',
+        headers: {
+          ...(options.headers || {}),
+          ...(body ? { 'Content-Length': Buffer.byteLength(body) } : {}),
+        },
+      },
+      (res) => {
+        let responseBody = '';
+        res.on('data', (c) => {
+          responseBody += c;
+        });
+        res.on('end', () => {
+          resolve({ status: res.statusCode, body: responseBody });
+        });
+      },
+    );
+    req.on('error', reject);
+    if (body) req.write(body);
+    req.end();
   });
 }
 
@@ -43,7 +79,9 @@ describe('explorer api', () => {
   });
 
   afterEach(async () => {
-    await new Promise((resolve) => server.close(() => resolve(undefined)));
+    if (server?.listening) {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
@@ -66,5 +104,87 @@ describe('explorer api', () => {
     expect(body).toContain('Picklejar Explorer</h1>');
     expect(body).toContain('data-theme="dark"');
     expect(body).toContain('id="theme-toggle-group"');
+  });
+
+  it('POST /api/sessions/:id/open delegates terminal handoff when callback is provided', async () => {
+    await new Promise((resolve) => server.close(() => resolve(undefined)));
+    const onOpenRequest = vi.fn().mockResolvedValue(undefined);
+    server = await createExplorerServer(tmpDir, { onOpenRequest });
+    await new Promise((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', () => resolve(undefined));
+    });
+    port = /** @type {import('node:net').AddressInfo} */ (server.address()).port;
+
+    const { status, body } = await httpPost(`http://127.0.0.1:${port}/api/sessions/api-sess/open`, {
+      agent: 'claude',
+      profile: 'strict',
+      exclude: ['history'],
+    });
+
+    expect(status).toBe(200);
+    expect(JSON.parse(body)).toEqual({ success: true, agent: 'claude', terminalHandoff: true });
+
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(onOpenRequest).toHaveBeenCalledTimes(1);
+    expect(onOpenRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectDir: tmpDir,
+        sessionId: 'api-sess',
+        agent: 'claude',
+        maxTokens: expect.any(Number),
+        brainDumpOpts: expect.objectContaining({
+          curationProfile: 'strict',
+          sections: expect.objectContaining({ summarizedHistory: false }),
+        }),
+      }),
+    );
+  });
+
+  it('ephemeral explorer requires token and closes after close beacon', async () => {
+    await new Promise((resolve) => server.close(() => resolve(undefined)));
+    const shutdownReasons = [];
+    server = await createExplorerServer(tmpDir, {
+      ephemeral: {
+        token: 'secret-token',
+        closeGraceMs: 10,
+        idleTimeoutMs: 50,
+        onShutdown: async (reason) => {
+          shutdownReasons.push(reason);
+        },
+      },
+    });
+    await new Promise((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', () => resolve(undefined));
+    });
+    port = /** @type {import('node:net').AddressInfo} */ (server.address()).port;
+
+    const denied = await httpGet(`http://127.0.0.1:${port}/`);
+    expect(denied.status).toBe(403);
+
+    const allowed = await httpGet(`http://127.0.0.1:${port}/?token=secret-token`);
+    expect(allowed.status).toBe(200);
+    expect(allowed.body).toContain('secret-token');
+
+    const heartbeat = await httpRequest(`http://127.0.0.1:${port}/api/explorer/heartbeat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-picklejar-explorer-token': 'secret-token',
+      },
+      body: JSON.stringify({ clientId: 'tab-1' }),
+    });
+    expect(heartbeat.status).toBe(200);
+
+    const close = await httpPost(`http://127.0.0.1:${port}/api/explorer/close?token=secret-token`, {
+      clientId: 'tab-1',
+      reason: 'pagehide',
+    });
+    expect(close.status).toBe(200);
+
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(shutdownReasons).toEqual(['pagehide']);
+    expect(server.listening).toBe(false);
   });
 });

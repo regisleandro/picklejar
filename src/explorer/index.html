@@ -641,6 +641,7 @@
   <script src="/vendor/dompurify.js"></script>
   <script>
 (function () {
+  const BOOTSTRAP = window.__PICKLEJAR_EXPLORER__ || {};
   const AGENTS = ['claude', 'cursor', 'opencode', 'cline', 'aider'];
   const PROFILES = ['balanced', 'strict', 'audit', 'recovery'];
   const EXCLUDE_OPTS = [
@@ -648,14 +649,36 @@
     { value: 'instructions', label: 'Instructions' },
     { value: 'discarded paths', label: 'Discarded paths' },
   ];
+  const EXPLORER_TOKEN = typeof BOOTSTRAP.token === 'string' ? BOOTSTRAP.token : '';
+  const HEARTBEAT_MS = Number(BOOTSTRAP.heartbeatMs) > 0 ? Number(BOOTSTRAP.heartbeatMs) : 15000;
+  const EPHEMERAL = Boolean(BOOTSTRAP.ephemeral && EXPLORER_TOKEN);
 
   let sessions = [];
   let selectedId = null;
   let summaryCache = null;
   let actionsCache = null;
+  let heartbeatTimer = null;
+  let explorerClosed = false;
 
   const $ = (id) => document.getElementById(id);
   const THEME_KEY = 'picklejar-explorer-theme';
+  const CLIENT_ID = (() => {
+    if (!EPHEMERAL) return '';
+    const key = 'picklejar-explorer-client-id';
+    try {
+      let value = sessionStorage.getItem(key);
+      if (!value) {
+        value =
+          (window.crypto && typeof window.crypto.randomUUID === 'function')
+            ? window.crypto.randomUUID()
+            : 'client-' + Date.now() + '-' + Math.random().toString(16).slice(2);
+        sessionStorage.setItem(key, value);
+      }
+      return value;
+    } catch {
+      return 'client-' + Date.now() + '-' + Math.random().toString(16).slice(2);
+    }
+  })();
 
   /* ── Theme ── */
   function setTheme(mode) {
@@ -750,6 +773,61 @@
     }
   }
 
+  async function apiFetch(url, init) {
+    const options = init ? { ...init } : {};
+    const headers = new Headers(options.headers || {});
+    if (EXPLORER_TOKEN) {
+      headers.set('x-picklejar-explorer-token', EXPLORER_TOKEN);
+    }
+    options.headers = headers;
+    return fetch(url, options);
+  }
+
+  async function sendHeartbeat() {
+    if (!EPHEMERAL || explorerClosed) return;
+    try {
+      await apiFetch('/api/explorer/heartbeat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId: CLIENT_ID }),
+      });
+    } catch {
+      /* ignore ephemeral heartbeat failures */
+    }
+  }
+
+  function startHeartbeat() {
+    if (!EPHEMERAL || heartbeatTimer) return;
+    void sendHeartbeat();
+    heartbeatTimer = window.setInterval(() => {
+      void sendHeartbeat();
+    }, HEARTBEAT_MS);
+  }
+
+  function closeExplorer(reason) {
+    if (!EPHEMERAL || explorerClosed) return;
+    explorerClosed = true;
+    if (heartbeatTimer) {
+      window.clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
+    }
+    const url = '/api/explorer/close?token=' + encodeURIComponent(EXPLORER_TOKEN);
+    const body = JSON.stringify({ clientId: CLIENT_ID, reason });
+    try {
+      if (navigator.sendBeacon && navigator.sendBeacon(url, body)) {
+        return;
+      }
+    } catch {
+      /* fall through to fetch keepalive */
+    }
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+      keepalive: true,
+    }).catch(() => {});
+  }
+
   /* ── Main placeholder ── */
   function setMainContent(html) {
     $('main').innerHTML = '<div class="main-scroll">' + html + '</div>';
@@ -757,7 +835,7 @@
 
   /* ── Load sessions ── */
   async function loadSessions() {
-    const r = await fetch('/api/sessions');
+    const r = await apiFetch('/api/sessions');
     if (!r.ok) throw new Error('Failed to load sessions');
     sessions = await r.json();
     renderSidebar();
@@ -836,9 +914,9 @@
 
     try {
       const [detailR, sumR, actR] = await Promise.all([
-        fetch('/api/sessions/' + encodeURIComponent(id)),
-        fetch('/api/sessions/' + encodeURIComponent(id) + '/summary'),
-        fetch('/api/sessions/' + encodeURIComponent(id) + '/actions'),
+        apiFetch('/api/sessions/' + encodeURIComponent(id)),
+        apiFetch('/api/sessions/' + encodeURIComponent(id) + '/summary'),
+        apiFetch('/api/sessions/' + encodeURIComponent(id) + '/actions'),
       ]);
       if (!detailR.ok) throw new Error('Session not found');
       const detail = await detailR.json();
@@ -1032,14 +1110,14 @@
       const exclude = [];
       document.querySelectorAll('#exclude-box input:checked').forEach((cb) => exclude.push(cb.value));
       try {
-        const r = await fetch('/api/sessions/' + encodeURIComponent(vm.sessionId) + '/open', {
+        const r = await apiFetch('/api/sessions/' + encodeURIComponent(vm.sessionId) + '/open', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ agent, profile, exclude }),
         });
         const data = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(data.error || 'Open failed');
-        toast('Opened in ' + agent);
+        toast(data.terminalHandoff ? 'Switch to the terminal: opening ' + agent : 'Opened in ' + agent);
         $(openPanelId).hidden = true;
       } catch (e) {
         toast(String(e.message || e));
@@ -1050,8 +1128,16 @@
   $('refresh').addEventListener('click', () => {
     loadSessions().then(() => toast('Refreshed')).catch((e) => toast(String(e.message || e)));
   });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      void sendHeartbeat();
+    }
+  });
+  window.addEventListener('pagehide', () => closeExplorer('pagehide'));
+  window.addEventListener('beforeunload', () => closeExplorer('beforeunload'));
 
   initTheme();
+  startHeartbeat();
   loadSessions().catch((e) => {
     $('sidebar').innerHTML = '<p class="error-text" style="padding:1rem 0.875rem;font-size:0.8125rem">' + escapeHtml(String(e.message || e)) + '</p>';
   });

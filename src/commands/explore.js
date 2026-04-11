@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { createExplorerServer } from '../server/api.js';
+import { openSessionInAgent } from '../core/resume-service.js';
 
 /**
  * @param {string} url
@@ -50,8 +52,38 @@ export function registerExploreCommand(program) {
     if (Number.isNaN(port) || port < 0) {
       port = remote ? 19433 : 0;
     }
+    const explorerToken = randomUUID();
 
-    const server = await createExplorerServer(projectDir);
+    /** @type {import('node:http').Server} */
+    let server;
+    let handoffInFlight = false;
+
+    const handoffToAgent = async (request) => {
+      if (handoffInFlight) return;
+      handoffInFlight = true;
+      console.log(`Explorer handing off session ${request.sessionId} to ${request.agent}...`);
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+      await openSessionInAgent({
+        ...request,
+        onInjected: (injected) => {
+          if (injected) {
+            console.log('Resume context injected for', request.agent);
+          }
+        },
+      });
+    };
+
+    server = await createExplorerServer(projectDir, {
+      onOpenRequest: handoffToAgent,
+      ephemeral: {
+        token: explorerToken,
+        onShutdown: async (reason) => {
+          if (handoffInFlight) return;
+          console.log(`Picklejar Explorer closed (${reason}).`);
+          process.exit(0);
+        },
+      },
+    });
 
     await new Promise((resolve, reject) => {
       server.once('error', reject);
@@ -60,7 +92,7 @@ export function registerExploreCommand(program) {
 
     const addr = /** @type {import('node:net').AddressInfo} */ (server.address());
     const actualPort = addr.port;
-    const baseUrl = `http://127.0.0.1:${actualPort}`;
+    const baseUrl = `http://127.0.0.1:${actualPort}/?token=${encodeURIComponent(explorerToken)}`;
     console.log(`Picklejar Explorer running at ${baseUrl}`);
     console.log('Press Ctrl+C to stop.');
 

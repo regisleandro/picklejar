@@ -51,6 +51,35 @@ function sendHTML(res, code, html) {
 }
 
 /**
+ * @param {string} html
+ * @param {object} bootstrap
+ */
+function injectExplorerBootstrap(html, bootstrap) {
+  const script = `<script>window.__PICKLEJAR_EXPLORER__=${JSON.stringify(bootstrap)};</script>`;
+  return html.replace('<script src="/vendor/marked.js"></script>', `${script}\n  <script src="/vendor/marked.js"></script>`);
+}
+
+/**
+ * @param {import('node:http').IncomingMessage} req
+ * @param {URL} url
+ */
+function requestToken(req, url) {
+  const header = req.headers['x-picklejar-explorer-token'];
+  if (typeof header === 'string' && header.trim()) return header.trim();
+  return url.searchParams.get('token')?.trim() || '';
+}
+
+/**
+ * @param {string} token
+ * @param {import('node:http').IncomingMessage} req
+ * @param {URL} url
+ */
+function tokenMatches(token, req, url) {
+  if (!token) return true;
+  return requestToken(req, url) === token;
+}
+
+/**
  * @param {import('node:http').IncomingMessage} req
  */
 async function readJsonBody(req) {
@@ -66,12 +95,126 @@ async function readJsonBody(req) {
 }
 
 /**
+ * @typedef {object} ExplorerOpenRequest
+ * @property {string} projectDir
+ * @property {string} sessionId
+ * @property {string} agent
+ * @property {number} maxTokens
+ * @property {ReturnType<typeof buildHandoffDumpOptions>} brainDumpOpts
+ * @property {import('../types/index.d.ts').PicklejarSession} session
+ */
+
+/**
+ * @typedef {object} ExplorerEphemeralOptions
+ * @property {string} token
+ * @property {number} [heartbeatMs]
+ * @property {number} [idleTimeoutMs]
+ * @property {number} [closeGraceMs]
+ * @property {(reason: string) => void | Promise<void>} [onShutdown]
+ */
+
+/**
  * @param {string} projectDir
+ * @param {{ onOpenRequest?: (request: ExplorerOpenRequest) => void | Promise<void>, ephemeral?: ExplorerEphemeralOptions }} [options]
  * @returns {Promise<import('node:http').Server>}
  */
-export async function createExplorerServer(projectDir) {
+export async function createExplorerServer(projectDir, options = {}) {
+  const { onOpenRequest, ephemeral } = options;
   const explorerHtmlPath = path.join(__dirname, '../explorer/index.html');
-  const explorerHtml = await fs.readFile(explorerHtmlPath, 'utf8');
+  const explorerHtmlRaw = await fs.readFile(explorerHtmlPath, 'utf8');
+  const heartbeatMs = ephemeral?.heartbeatMs ?? 15_000;
+  const idleTimeoutMs = ephemeral?.idleTimeoutMs ?? 45_000;
+  const closeGraceMs = ephemeral?.closeGraceMs ?? 1_500;
+  const explorerHtml = injectExplorerBootstrap(explorerHtmlRaw, {
+    ephemeral: Boolean(ephemeral?.token),
+    token: ephemeral?.token || '',
+    heartbeatMs,
+    idleTimeoutMs,
+  });
+  const activeClients = new Map();
+  let lastActivityAt = Date.now();
+  let idleTimer = null;
+  let nextShutdownAt = ephemeral ? Date.now() + idleTimeoutMs : null;
+  let shuttingDown = false;
+
+  const shutdownExplorer = async (reason) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    if (idleTimer) clearTimeout(idleTimer);
+    server.close(async () => {
+      await ephemeral?.onShutdown?.(reason);
+    });
+  };
+
+  const scheduleLifecycleCheck = () => {
+    if (!ephemeral || shuttingDown) return;
+    if (idleTimer) clearTimeout(idleTimer);
+    const now = Date.now();
+
+    for (const [clientId, seenAt] of activeClients) {
+      if (now - seenAt >= idleTimeoutMs) {
+        activeClients.delete(clientId);
+      }
+    }
+    if (activeClients.size === 0 && nextShutdownAt == null) {
+      nextShutdownAt = now + closeGraceMs;
+    }
+
+    const deadlines = [];
+    if (nextShutdownAt != null) deadlines.push(nextShutdownAt);
+    if (activeClients.size > 0) {
+      const oldestClientAt = Math.min(...activeClients.values());
+      deadlines.push(oldestClientAt + idleTimeoutMs);
+    }
+    if (deadlines.length === 0) return;
+
+    const delay = Math.max(25, Math.min(...deadlines) - now);
+    idleTimer = setTimeout(() => {
+      const checkNow = Date.now();
+      for (const [clientId, seenAt] of activeClients) {
+        if (checkNow - seenAt >= idleTimeoutMs) {
+          activeClients.delete(clientId);
+        }
+      }
+      if (activeClients.size === 0 && nextShutdownAt == null) {
+        nextShutdownAt = checkNow + closeGraceMs;
+      }
+      if (nextShutdownAt != null && checkNow >= nextShutdownAt && activeClients.size === 0) {
+        void shutdownExplorer('idle');
+        return;
+      }
+      scheduleLifecycleCheck();
+    }, delay);
+    idleTimer.unref?.();
+  };
+
+  const noteServerActivity = () => {
+    if (!ephemeral) return;
+    lastActivityAt = Date.now();
+    if (activeClients.size === 0) {
+      nextShutdownAt = lastActivityAt + idleTimeoutMs;
+    }
+    scheduleLifecycleCheck();
+  };
+
+  const noteClientHeartbeat = (clientId) => {
+    if (!ephemeral) return;
+    const now = Date.now();
+    lastActivityAt = now;
+    activeClients.set(clientId, now);
+    nextShutdownAt = null;
+    scheduleLifecycleCheck();
+  };
+
+  const noteClientClosed = (clientId) => {
+    if (!ephemeral) return;
+    lastActivityAt = Date.now();
+    activeClients.delete(clientId);
+    if (activeClients.size === 0) {
+      nextShutdownAt = Date.now() + closeGraceMs;
+    }
+    scheduleLifecycleCheck();
+  };
 
   const server = http.createServer(async (req, res) => {
     if (req.method === 'OPTIONS') {
@@ -91,7 +234,15 @@ export async function createExplorerServer(projectDir) {
     const p = url.pathname;
 
     try {
+      if (ephemeral?.token && (p === '/' || p === '/index.html' || p.startsWith('/api/'))) {
+        if (!tokenMatches(ephemeral.token, req, url)) {
+          sendJSON(res, 403, { error: 'Explorer session expired' });
+          return;
+        }
+      }
+
       if (req.method === 'GET' && (p === '/' || p === '/index.html')) {
+        noteServerActivity();
         sendHTML(res, 200, explorerHtml);
         return;
       }
@@ -110,7 +261,46 @@ export async function createExplorerServer(projectDir) {
         return;
       }
 
+      if (req.method === 'POST' && p === '/api/explorer/heartbeat') {
+        const body = await readJsonBody(req);
+        if (body === null) {
+          sendJSON(res, 400, { error: 'Invalid JSON body' });
+          return;
+        }
+        const clientId = typeof body.clientId === 'string' ? body.clientId.trim() : '';
+        if (!clientId) {
+          sendJSON(res, 400, { error: 'Missing clientId' });
+          return;
+        }
+        noteClientHeartbeat(clientId);
+        sendJSON(res, 200, { ok: true });
+        return;
+      }
+
+      if (req.method === 'POST' && p === '/api/explorer/close') {
+        const body = await readJsonBody(req);
+        if (body === null) {
+          sendJSON(res, 400, { error: 'Invalid JSON body' });
+          return;
+        }
+        const clientId = typeof body.clientId === 'string' ? body.clientId.trim() : '';
+        noteClientClosed(clientId);
+        res.once('finish', () => {
+          if (ephemeral && activeClients.size === 0) {
+            const reason = typeof body.reason === 'string' && body.reason.trim() ? body.reason.trim() : 'close';
+            setTimeout(() => {
+              if (!shuttingDown && activeClients.size === 0) {
+                void shutdownExplorer(reason);
+              }
+            }, closeGraceMs);
+          }
+        });
+        sendJSON(res, 200, { ok: true });
+        return;
+      }
+
       if (req.method === 'GET' && p === '/api/sessions') {
+        noteServerActivity();
         const sessions = await listSessions(projectDir);
         sendJSON(res, 200, sessions);
         return;
@@ -118,6 +308,7 @@ export async function createExplorerServer(projectDir) {
 
       let m = /^\/api\/sessions\/([^/]+)\/summary$/.exec(p);
       if (m && req.method === 'GET') {
+        noteServerActivity();
         const id = decodeURIComponent(m[1]);
         const session = await loadSessionDetail(projectDir, id);
         if (!session) {
@@ -133,6 +324,7 @@ export async function createExplorerServer(projectDir) {
 
       m = /^\/api\/sessions\/([^/]+)\/actions$/.exec(p);
       if (m && req.method === 'GET') {
+        noteServerActivity();
         const id = decodeURIComponent(m[1]);
         const session = await loadSessionDetail(projectDir, id);
         if (!session) {
@@ -145,6 +337,7 @@ export async function createExplorerServer(projectDir) {
 
       m = /^\/api\/sessions\/([^/]+)\/open$/.exec(p);
       if (m && req.method === 'POST') {
+        noteServerActivity();
         const id = decodeURIComponent(m[1]);
         const body = await readJsonBody(req);
         if (body === null) {
@@ -169,6 +362,23 @@ export async function createExplorerServer(projectDir) {
         }
         const cfg = await loadConfig(projectDir);
         const brainDumpOpts = buildHandoffDumpOptions({ profile, exclude });
+        if (onOpenRequest) {
+          const request = {
+            projectDir,
+            sessionId: id,
+            agent,
+            maxTokens: cfg.maxTokens,
+            brainDumpOpts,
+            session,
+          };
+          res.once('finish', () => {
+            Promise.resolve(onOpenRequest(request)).catch((err) => {
+              console.error(String(err?.message || err));
+            });
+          });
+          sendJSON(res, 200, { success: true, agent, terminalHandoff: true });
+          return;
+        }
         await openSessionInAgent({
           projectDir,
           sessionId: id,
@@ -184,6 +394,7 @@ export async function createExplorerServer(projectDir) {
 
       m = /^\/api\/sessions\/([^/]+)$/.exec(p);
       if (m && req.method === 'GET') {
+        noteServerActivity();
         const id = decodeURIComponent(m[1]);
         const vm = await getSessionViewModel(projectDir, id);
         if (!vm) {
@@ -199,6 +410,12 @@ export async function createExplorerServer(projectDir) {
       sendJSON(res, 500, { error: String(/** @type {Error} */ (e).message || e) });
     }
   });
+  server.on('close', () => {
+    shuttingDown = true;
+    if (idleTimer) clearTimeout(idleTimer);
+  });
+
+  scheduleLifecycleCheck();
 
   return server;
 }
