@@ -77,6 +77,63 @@ describe('sessions', () => {
     expect(deriveSessionTitle(s)).toBe('My important goal');
   });
 
+  it('deriveSessionTitle uses first sentence of goal', () => {
+    const s = createSession('id1', '/p');
+    s.goal = 'Do A. Do B.';
+    expect(deriveSessionTitle(s)).toBe('Do A.');
+  });
+
+  it('deriveSessionTitle uses basename for edit-related actions', () => {
+    const s = createSession('id2', '/p');
+    addAction(s, {
+      id: '1',
+      timestamp: Date.now(),
+      toolName: 'Edit',
+      input: {},
+      output: 'ok',
+      relatedFiles: ['/Users/x/project/src/foo.ts'],
+    });
+    expect(deriveSessionTitle(s)).toBe('foo.ts');
+  });
+
+  it('deriveSessionTitle skips user_query wrapper lines in multiline goal', () => {
+    const s = createSession('wrap1', '/p');
+    s.goal = '<user_query>\nvalide a implementação do client\n</user_query>';
+    expect(deriveSessionTitle(s)).toBe('valide a implementação do client');
+  });
+
+  it('deriveSessionTitle unwraps single-line user_query and takes first sentence', () => {
+    const s = createSession('wrap2', '/p');
+    s.goal = '<user_query>Ship auth. Improve docs.</user_query>';
+    expect(deriveSessionTitle(s)).toBe('Ship auth.');
+  });
+
+  it('deriveSessionTitle unwraps user_message input with tagged user_query field', () => {
+    const s = createSession('wrap3', '/p');
+    addAction(s, {
+      id: '1',
+      timestamp: Date.now(),
+      toolName: 'user_message',
+      input: { user_query: '<user_query>\nHello world\n</user_query>' },
+      output: '',
+      relatedFiles: [],
+    });
+    expect(deriveSessionTitle(s)).toBe('Hello world');
+  });
+
+  it('deriveSessionTitle unwraps User tool content field with wrapper', () => {
+    const s = createSession('wrap4', '/p');
+    addAction(s, {
+      id: '1',
+      timestamp: Date.now(),
+      toolName: 'User',
+      input: { content: '<user_query>Fix the bug.</user_query>' },
+      output: '',
+      relatedFiles: [],
+    });
+    expect(deriveSessionTitle(s)).toBe('Fix the bug.');
+  });
+
   it('deriveSessionTitle never uses raw tool name as title', () => {
     const s = createSession('sessidxx', '/p');
     addAction(s, {
