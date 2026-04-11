@@ -20,7 +20,7 @@ export function cursorPicklejarHooksDoc() {
 
 /** Same hook graph as Claude Code for Continue CLI settings merge */
 export function continueHooksBlock() {
-  return claudeHooksBlock();
+  return claudeHooksBlock('continue');
 }
 
 /**
@@ -67,6 +67,7 @@ export function copilotHookShellScriptFor(hook) {
 set -euo pipefail
 ROOT="$(cd "$(dirname "\${BASH_SOURCE[0]}")/../../.." && pwd)"
 export PICKLEJAR_PROJECT_DIR="$ROOT"
+export PICKLEJAR_AGENT_ORIGIN="copilot"
 exec node "$ROOT/.picklejar/hooks/run-hook.js" ${hook}
 `;
 }
@@ -75,6 +76,7 @@ exec node "$ROOT/.picklejar/hooks/run-hook.js" ${hook}
 export function copilotHookPowerShellScriptFor(hook) {
   return `$Root = (Resolve-Path (Join-Path $PSScriptRoot "..\\..\\..")).Path
 $env:PICKLEJAR_PROJECT_DIR = $Root
+$env:PICKLEJAR_AGENT_ORIGIN = "copilot"
 & node "$Root\\.picklejar\\hooks\\run-hook.js" ${hook}
 `;
 }
@@ -95,6 +97,7 @@ export function clineHookFiles() {
 set -euo pipefail
 ROOT="$(cd "$(dirname "\${BASH_SOURCE[0]}")/../.." && pwd)"
 export PICKLEJAR_PROJECT_DIR="$ROOT"
+export PICKLEJAR_AGENT_ORIGIN="cline"
 exec node "$ROOT/.picklejar/hooks/run-hook.js" ${hook}
 `;
   return CLINE_HOOK_TARGETS.map(({ file, hook }) => ({

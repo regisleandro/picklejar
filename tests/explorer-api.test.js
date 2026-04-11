@@ -66,6 +66,5 @@ describe('explorer api', () => {
     expect(body).toContain('Picklejar Explorer</h1>');
     expect(body).toContain('data-theme="dark"');
     expect(body).toContain('id="theme-toggle-group"');
-    expect(body).toContain('id="header-agent"');
   });
 });

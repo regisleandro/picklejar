@@ -14,6 +14,7 @@ import { loadConfig } from '../core/config.js';
 import { redactWithPatterns } from '../core/redact.js';
 import { truncateBashOutput, truncateResponse } from '../core/truncate.js';
 import { extractGoalFromTranscript } from '../core/transcript.js';
+import { detectAgentOrigin } from '../core/agent-origin.js';
 import { readStdinJson, getProjectDir, getTranscriptPathFromEnv, logErr } from './_lib.js';
 import { normalizePostToolUsePayload } from '../core/normalize-payload.js';
 
@@ -110,6 +111,7 @@ async function main() {
   const projectDir = getProjectDir();
   const rawPayload = await readStdinJson();
   const payload = normalizePostToolUsePayload(rawPayload);
+  const agentOrigin = detectAgentOrigin(rawPayload);
   const sessionId = payload.sessionId;
   const toolName = payload.toolName;
   const toolInput = payload.toolInput;
@@ -125,6 +127,9 @@ async function main() {
 
   let session = await loadSession(projectDir, sessionId);
   if (!session) session = createSession(sessionId, projectDir);
+  if (!session.agentOrigin && agentOrigin) {
+    session.agentOrigin = agentOrigin;
+  }
 
   const tp =
     payload.transcriptPath ??

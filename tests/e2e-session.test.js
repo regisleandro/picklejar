@@ -58,6 +58,35 @@ afterEach(async () => {
 });
 
 describe('e2e', () => {
+  it('post-tool-use persists detected agent origin on new sessions', async () => {
+    await runHook(
+      'post-tool-use',
+      {
+        session_id: 'agent-origin-claude',
+        tool_name: 'Read',
+        tool_input: { file_path: 'src/origin.ts' },
+        tool_response: 'ok',
+      },
+      { CLAUDE_PROJECT_DIR: proj },
+    );
+    const snap = await loadSnapshot(proj, 'agent-origin-claude');
+    expect(snap?.session.agentOrigin).toBe('claude');
+  });
+
+  it('session-start honors explicit agent origin override', async () => {
+    const { code } = await runHook(
+      'session-start',
+      { source: 'startup', session_id: 'agent-origin-continue' },
+      {
+        CLAUDE_PROJECT_DIR: proj,
+        PICKLEJAR_AGENT_ORIGIN: 'continue',
+      },
+    );
+    expect(code).toBe(0);
+    const snap = await loadSnapshot(proj, 'agent-origin-continue');
+    expect(snap?.session.agentOrigin).toBe('continue');
+  });
+
   it('init continue merges .continue/settings.json with picklejar run-hook', async () => {
     const { code, err } = await runCli(['init', 'continue', proj], process.cwd());
     expect(code).toBe(0);
@@ -65,6 +94,7 @@ describe('e2e', () => {
     const settingsPath = path.join(proj, '.continue', 'settings.json');
     const raw = JSON.parse(await fs.readFile(settingsPath, 'utf8'));
     expect(JSON.stringify(raw)).toContain('.picklejar/hooks/run-hook.js');
+    expect(JSON.stringify(raw)).toContain('PICKLEJAR_AGENT_ORIGIN');
     expect(raw.hooks.PostToolUse).toBeDefined();
   });
 
@@ -74,6 +104,7 @@ describe('e2e', () => {
     expect(err).toBe('');
     const postTool = path.join(proj, '.clinerules', 'hooks', 'PostToolUse');
     const content = await fs.readFile(postTool, 'utf8');
+    expect(content).toContain('PICKLEJAR_AGENT_ORIGIN="cline"');
     expect(content).toContain('post-tool-use');
   });
 

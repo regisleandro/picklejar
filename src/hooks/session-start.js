@@ -10,6 +10,7 @@ import { cleanAllResumeInjections } from '../adapters/resume-cleanup.js';
 import { extractGoalFromTranscript } from '../core/transcript.js';
 import { readStdinJson, getProjectDir, logErr } from './_lib.js';
 import { mapSessionStartPayload } from '../core/session-start-map.js';
+import { detectAgentOrigin } from '../core/agent-origin.js';
 
 /**
  * @returns {Promise<{ sessionId?: string } | null>}
@@ -39,6 +40,7 @@ async function main() {
   const projectDir = getProjectDir();
   const raw = await readStdinJson();
   const mapped = mapSessionStartPayload(raw);
+  const agentOrigin = detectAgentOrigin(raw);
   const source = mapped.source;
   const sessionIdFromPayload = mapped.sessionId;
   const cfg = await loadConfig(projectDir);
@@ -53,6 +55,9 @@ async function main() {
       session = createSession(sessionIdFromPayload, projectDir);
       const tp = mapped.transcriptPath;
       if (typeof tp === 'string') session.transcriptPath = tp;
+    }
+    if (!session.agentOrigin && agentOrigin) {
+      session.agentOrigin = agentOrigin;
     }
     if (!session.goal && session.transcriptPath) {
       const goal = await extractGoalFromTranscript(session.transcriptPath);
