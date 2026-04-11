@@ -21,6 +21,9 @@ import {
 } from './core/curation.js';
 import { picklejarRoot, forceResumePath, resumeContextPath, snapshotsDir } from './core/paths.js';
 import { summarizeSessionForList } from './core/list-summary.js';
+import { listSessions } from './core/sessions.js';
+import { formatRelativeTime } from './core/human-summary.js';
+import { registerSummaryCommand } from './commands/summary.js';
 import {
   AGENT_IDS,
   CAPABILITIES,
@@ -33,6 +36,103 @@ import {
 function getPackageRoot() {
   const here = fileURLToPath(new URL('.', import.meta.url));
   return path.resolve(here, '..');
+}
+
+/**
+ * @param {string} sessionId
+ */
+function shortSessionLabel(sessionId) {
+  return sessionId.length <= 6 ? sessionId : sessionId.slice(0, 6);
+}
+
+/**
+ * @param {string | number} s
+ * @param {number} width
+ */
+function clipCell(s, width) {
+  const str = String(s);
+  if (str.length <= width) return str.padEnd(width);
+  return `${str.slice(0, Math.max(0, width - 2))}..`;
+}
+
+/**
+ * @param {string} projectDir
+ * @param {{ verbose?: boolean, sections?: boolean }} opts
+ */
+async function listSnapshotsLegacy(projectDir, opts) {
+  const rows = await listSnapshots(projectDir);
+  if (!rows.length) {
+    console.log('No snapshots.');
+    return;
+  }
+
+  const includeSummary = Boolean(opts.verbose || opts.sections);
+  for (const r of rows) {
+    const base = includeSummary
+      ? [`${r.sessionId}`, `${new Date(r.mtimeMs).toISOString()}`]
+      : [`${r.sessionId}`, `${r.file}`, `${new Date(r.mtimeMs).toISOString()}`];
+    if (!includeSummary) {
+      console.log(base.join('\t'));
+      continue;
+    }
+
+    const loaded = await readSnapshotFile(projectDir, r.file);
+    if (!loaded) {
+      const extras = [];
+      if (opts.verbose) extras.push('(unreadable snapshot)', '?', '?');
+      if (opts.sections) extras.push('[]');
+      console.log(base.concat(extras).join('\t'));
+      continue;
+    }
+
+    const summary = summarizeSessionForList(loaded.session);
+    const extras = [];
+    if (opts.verbose) {
+      extras.push(summary.title, String(summary.actionsCount), summary.ended ? 'yes' : 'no');
+    }
+    if (opts.sections) {
+      extras.push(`[${summary.sections.join(', ')}]`);
+    }
+    console.log(base.concat(extras).join('\t'));
+  }
+}
+
+/**
+ * @param {string} projectDir
+ * @param {boolean} verbose
+ */
+async function printSessionList(projectDir, verbose) {
+  const sessions = await listSessions(projectDir);
+  if (!sessions.length) {
+    console.log('No sessions.');
+    return;
+  }
+  console.log(`Sessions found: ${sessions.length}\n`);
+  if (verbose) {
+    for (const s of sessions) {
+      console.log(`${shortSessionLabel(s.sessionId)}  ${s.title}`);
+      const rel = formatRelativeTime(s.updatedAt);
+      console.log(`        status: ${s.status} | ${rel} | ${s.actionsCount} actions`);
+      const topFiles = s.activeFiles.slice(0, 3).map((f) => path.basename(f));
+      if (topFiles.length) {
+        console.log(`        files: ${topFiles.join(', ')}`);
+      }
+      if (s.lastPlannedAction) {
+        console.log(`        next action: ${s.lastPlannedAction}`);
+      }
+      if (s.errorSummary) {
+        console.log(`        error: ${s.errorSummary}`);
+      }
+      console.log('');
+    }
+  } else {
+    for (const s of sessions) {
+      const rel = formatRelativeTime(s.updatedAt);
+      console.log(
+        `${clipCell(shortSessionLabel(s.sessionId), 8)}  ${clipCell(s.title, 28)}  ${clipCell(s.status, 10)}  ${clipCell(rel, 14)}  ${s.actionsCount} actions`,
+      );
+    }
+  }
 }
 
 const SECTION_FLAGS = [
@@ -544,21 +644,27 @@ program
     console.log(JSON.stringify(table, null, 2));
   });
 
-program
+const actionsCmd = program
   .command('actions')
   .description('List recorded actions for a session')
   .argument('<id>', 'session id')
   .argument('[dir]', 'project directory', process.cwd())
-  .action(async (id, dir) => {
-    const projectDir = path.resolve(dir);
-    const loaded = await loadSnapshot(projectDir, id);
-    if (!loaded) {
-      console.error('Session not found');
-      process.exitCode = 1;
-      return;
-    }
-    printActionRows(loaded.session);
-  });
+  .option('--json', 'output as JSON');
+
+actionsCmd.action(async (id, dir) => {
+  const projectDir = path.resolve(dir);
+  const loaded = await loadSnapshot(projectDir, id);
+  if (!loaded) {
+    console.error('Session not found');
+    process.exitCode = 1;
+    return;
+  }
+  if (actionsCmd.opts().json) {
+    console.log(JSON.stringify(listSelectableActions(loaded.session), null, 2));
+    return;
+  }
+  printActionRows(loaded.session);
+});
 
 const curate = program
   .command('curate')
@@ -883,64 +989,43 @@ program
 
 program
   .command('list')
-  .description('List snapshot files')
+  .description('List sessions (use --sections for per-snapshot rows)')
   .argument('[dir]', 'project directory', process.cwd())
-  .option('--verbose', 'show derived session title, actions count, and ended status')
-  .option('--sections', 'show detected content sections present in each snapshot')
+  .option('--verbose', 'show session details (files, next action, error)')
+  .option('--sections', 'list each snapshot row with detected sections (legacy)')
+  .option('--json', 'output listSessions() as JSON')
   .action(async (dir, opts) => {
     const projectDir = path.resolve(dir);
-    const rows = await listSnapshots(projectDir);
-    if (!rows.length) {
-      console.log('No snapshots.');
+    if (opts.json) {
+      const sessions = await listSessions(projectDir);
+      console.log(JSON.stringify(sessions, null, 2));
       return;
     }
-
-    const includeSummary = Boolean(opts.verbose || opts.sections);
-    for (const r of rows) {
-      const base = includeSummary
-        ? [`${r.sessionId}`, `${new Date(r.mtimeMs).toISOString()}`]
-        : [`${r.sessionId}`, `${r.file}`, `${new Date(r.mtimeMs).toISOString()}`];
-      if (!includeSummary) {
-        console.log(base.join('\t'));
-        continue;
-      }
-
-      const loaded = await readSnapshotFile(projectDir, r.file);
-      if (!loaded) {
-        const extras = [];
-        if (opts.verbose) extras.push('(unreadable snapshot)', '?', '?');
-        if (opts.sections) extras.push('[]');
-        console.log(base.concat(extras).join('\t'));
-        continue;
-      }
-
-      const summary = summarizeSessionForList(loaded.session);
-      const extras = [];
-      if (opts.verbose) {
-        extras.push(summary.title, String(summary.actionsCount), summary.ended ? 'yes' : 'no');
-      }
-      if (opts.sections) {
-        extras.push(`[${summary.sections.join(', ')}]`);
-      }
-      console.log(base.concat(extras).join('\t'));
+    if (opts.sections) {
+      await listSnapshotsLegacy(projectDir, opts);
+      return;
     }
+    await printSessionList(projectDir, Boolean(opts.verbose));
   });
 
-program
+const inspectCmd = program
   .command('inspect')
   .description('Print session JSON (pretty)')
   .argument('<id>', 'session id')
   .argument('[dir]', 'project directory', process.cwd())
-  .action(async (id, dir) => {
-    const projectDir = path.resolve(dir);
-    const loaded = await loadSnapshot(projectDir, id);
-    if (!loaded) {
-      console.error('Session not found');
-      process.exitCode = 1;
-      return;
-    }
-    console.log(JSON.stringify(loaded.session, null, 2));
-  });
+  .option('--json', 'output deserialized session as JSON', true);
+
+inspectCmd.action(async (id, dir) => {
+  const projectDir = path.resolve(dir);
+  const loaded = await loadSnapshot(projectDir, id);
+  if (!loaded) {
+    console.error('Session not found');
+    process.exitCode = 1;
+    return;
+  }
+  const useJson = inspectCmd.opts().json !== false;
+  console.log(JSON.stringify(loaded.session, null, useJson ? 2 : undefined));
+});
 
 const exportCmd = addBrainDumpFilterOptions(program
   .command('export')
@@ -1025,6 +1110,54 @@ resumeCmd.action(async (idArg, dir) => {
     );
     console.log(`Resume prepared for session ${sessionId}`);
     console.log(`Run: picklejar start <agent>   (see: picklejar capabilities)`);
+  } catch (e) {
+    console.error(/** @type {Error} */ (e).message || e);
+    process.exitCode = 1;
+  }
+});
+
+const openCmd = addBrainDumpFilterOptions(program
+  .command('open')
+  .description('Prepare resume context and launch a target agent in one step')
+  .argument('<id>', 'session id')
+  .argument('[dir]', 'project directory', process.cwd())
+  .requiredOption('--agent <agent>', `agent: ${AGENT_IDS.join(', ')}`));
+
+openCmd.action(async (id, dir) => {
+  try {
+    const projectDir = path.resolve(dir);
+    const opts = openCmd.opts();
+    const agent = opts.agent;
+    if (!AGENT_IDS.includes(agent)) {
+      console.error(`Unknown agent '${agent}'. Run: picklejar capabilities`);
+      process.exitCode = 1;
+      return;
+    }
+    const loaded = await loadSnapshot(projectDir, id);
+    if (!loaded) {
+      console.error('Session not found');
+      process.exitCode = 1;
+      return;
+    }
+    if (opts.listActions) {
+      printSelectableActions(loaded.session);
+      return;
+    }
+    const cfg = await loadConfig(projectDir);
+    const dumpOptions = await resolveBrainDumpOptions(loaded.session, opts);
+    const md = compileBrainDump(loaded.session, { maxTokens: cfg.maxTokens, ...dumpOptions });
+    await fs.mkdir(picklejarRoot(projectDir), { recursive: true });
+    await fs.writeFile(resumeContextPath(projectDir), md, 'utf8');
+    await fs.writeFile(
+      forceResumePath(projectDir),
+      JSON.stringify({ sessionId: id, at: Date.now() }, null, 2),
+      'utf8',
+    );
+    const injected = await injectResumeContext(agent, projectDir);
+    if (injected) {
+      console.log('Resume context injected for', agent);
+    }
+    spawnAgent(agent, projectDir);
   } catch (e) {
     console.error(/** @type {Error} */ (e).message || e);
     process.exitCode = 1;
@@ -1116,5 +1249,7 @@ cleanCmd.action(async (dir) => {
   }
   console.log('Cleanup done.');
 });
+
+registerSummaryCommand(program);
 
 program.parseAsync(process.argv);

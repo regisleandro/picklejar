@@ -194,7 +194,7 @@ describe('e2e', () => {
     expect(snap?.session.actions[0].output.split('\n').length).toBeLessThan(600);
   });
 
-  it('list keeps the default snapshot-only output', async () => {
+  it('list shows sessions by default', async () => {
     await runHook(
       'post-tool-use',
       {
@@ -207,10 +207,8 @@ describe('e2e', () => {
     );
     const { code, out } = await runCli(['list', proj], process.cwd());
     expect(code).toBe(0);
-    const line = out.trim().split('\n').find((row) => row.startsWith('list-default\t'));
-    expect(line).toBeTruthy();
-    expect(line.split('\t')).toHaveLength(3);
-    expect(line).toContain('.bin');
+    expect(out).toContain('Sessions found');
+    expect(out).toContain('list-d');
   });
 
   it('list --verbose shows derived title, action count, and ended status', async () => {
@@ -229,13 +227,9 @@ describe('e2e', () => {
 
     const { code, out } = await runCli(['list', proj, '--verbose'], process.cwd());
     expect(code).toBe(0);
-    const line = out.trim().split('\n').filter((row) => row.startsWith('list-verbose\t')).at(-1);
-    expect(line).toBeTruthy();
-    const cols = line.split('\t');
-    expect(cols).toHaveLength(5);
-    expect(cols[2]).toBe('Ship list titles');
-    expect(cols[3]).toBe('1');
-    expect(cols[4]).toBe('no');
+    expect(out).toContain('Ship list titles');
+    expect(out).toContain('status: active');
+    expect(out).toContain('1 actions');
   });
 
   it('list --sections shows detected sections and title fallback', async () => {
