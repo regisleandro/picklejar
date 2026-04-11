@@ -1,6 +1,7 @@
 /** @typedef {import('../types/index.d.ts').PicklejarSession} PicklejarSession */
+/** @typedef {import('../types/index.d.ts').ToolAction} ToolAction */
 
-const TITLE_MAX_LENGTH = 60;
+export const TITLE_MAX_LENGTH = 80;
 
 /**
  * @param {string | undefined} value
@@ -21,17 +22,80 @@ function truncateText(value, maxLength) {
 }
 
 /**
+ * @param {unknown} value
+ */
+function stringifyInput(value) {
+  if (typeof value === 'string') return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+/**
+ * @param {string} text
+ */
+function isHumanReadablePlannedAction(text) {
+  const t = compactText(text);
+  if (!t || t.length > 240) return false;
+  if (/^\s*[\[{]/.test(t)) return false;
+  return true;
+}
+
+/**
+ * @param {ToolAction} action
+ */
+function titleFromRelevantAction(action) {
+  const tn = String(action.toolName ?? '').toLowerCase();
+  if (tn.includes('user') || tn === 'user_message') {
+    const raw = stringifyInput(action.input);
+    const line = compactText(raw);
+    if (line) return truncateText(line, TITLE_MAX_LENGTH);
+  }
+  if (/\b(edit|write|apply_patch|search_replace|str_replace|multiedit)\b/.test(tn)) {
+    const rf = action.relatedFiles?.[0];
+    if (rf) return truncateText(compactText(rf), TITLE_MAX_LENGTH);
+  }
+  return '';
+}
+
+/**
+ * @param {PicklejarSession} session
+ */
+function deriveTitleFromActions(session) {
+  for (const action of session.actions ?? []) {
+    const candidate = titleFromRelevantAction(action);
+    if (candidate) return candidate;
+  }
+  return '';
+}
+
+/**
+ * @param {PicklejarSession} session
+ */
+function sessionTitleFallback(session) {
+  const id = session.sessionId ?? 'unknown';
+  const short = id.length <= 8 ? id : id.slice(0, 8);
+  return `Session ${short}`;
+}
+
+/**
  * @param {PicklejarSession} session
  */
 export function deriveSessionTitle(session) {
-  const candidates = [
-    compactText(session.goal),
-    compactText(session.lastPlannedAction),
-    compactText(session.actions?.[session.actions.length - 1]?.relatedFiles?.[0]),
-    compactText(session.actions?.[session.actions.length - 1]?.toolName),
-  ].filter(Boolean);
+  const goal = compactText(session.goal);
+  if (goal) return truncateText(goal, TITLE_MAX_LENGTH);
 
-  return truncateText(candidates[0] || 'Untitled session', TITLE_MAX_LENGTH);
+  const planned = compactText(session.lastPlannedAction);
+  if (planned && isHumanReadablePlannedAction(planned)) {
+    return truncateText(planned, TITLE_MAX_LENGTH);
+  }
+
+  const fromAction = deriveTitleFromActions(session);
+  if (fromAction) return fromAction;
+
+  return sessionTitleFallback(session);
 }
 
 /**

@@ -63,6 +63,7 @@
  * @property {string} [lastPlannedAction]
  * @property {string} [transcriptPath]
  * @property {boolean} [ended]
+ * @property {string} [agentOrigin]
  */
 
 export {};

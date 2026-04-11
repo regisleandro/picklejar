@@ -255,7 +255,7 @@ describe('e2e', () => {
     expect(line).toBeTruthy();
     const cols = line.split('\t');
     expect(cols).toHaveLength(6);
-    expect(cols[2]).toBe('src/sections.ts');
+    expect(cols[2]).toBe('Session list-sec');
     expect(cols[5]).toContain('[progress, active files, recent actions]');
   });
 
