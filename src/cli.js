@@ -24,6 +24,7 @@ import { summarizeSessionForList } from './core/list-summary.js';
 import { listSessions } from './core/sessions.js';
 import { formatRelativeTime } from './core/human-summary.js';
 import { registerSummaryCommand } from './commands/summary.js';
+import { registerExploreCommand } from './commands/explore.js';
 import { openSessionInAgent } from './core/resume-service.js';
 import {
   AGENT_IDS,
@@ -1252,5 +1253,6 @@ cleanCmd.action(async (dir) => {
 });
 
 registerSummaryCommand(program);
+registerExploreCommand(program);
 
 program.parseAsync(process.argv);

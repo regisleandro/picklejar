@@ -135,6 +135,6 @@ describe('resume-service', () => {
     });
 
     expect(registry.injectResumeContext).toHaveBeenCalledWith('claude', tmpDir);
-    expect(registry.spawnAgent).toHaveBeenCalledWith('claude', tmpDir);
+    expect(registry.spawnAgent).toHaveBeenCalledWith('claude', tmpDir, { detach: false });
   });
 });

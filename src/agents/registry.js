@@ -170,37 +170,55 @@ export async function injectResumeContext(agent, projectDir) {
 /**
  * @param {string} agent
  * @param {string} projectDir
+ * @param {{ detach?: boolean }} [spawnOpts] when detach, child is spawned in the background without replacing this process (explorer server)
  */
-export function spawnAgent(agent, projectDir) {
+export function spawnAgent(agent, projectDir, spawnOpts = {}) {
+  const detach = Boolean(spawnOpts.detach);
+
   const onExit = (child) => {
+    if (detach) return;
     child.on('exit', (code, signal) => {
       if (signal) process.kill(process.pid, signal);
       process.exit(code ?? 0);
     });
   };
 
+  const childSpawnOpts = detach
+    ? { stdio: 'ignore', detached: true, cwd: projectDir }
+    : { stdio: 'inherit', cwd: projectDir };
+
   switch (agent) {
     case 'claude': {
-      const child = spawn('claude', [], { stdio: 'inherit', cwd: projectDir });
-      onExit(child);
+      const child = spawn('claude', [], childSpawnOpts);
+      if (detach) child.unref();
+      else onExit(child);
       break;
     }
     case 'cursor': {
-      const child = spawn('cursor', [projectDir], { stdio: 'inherit', cwd: projectDir });
-      onExit(child);
+      const child = spawn('cursor', [projectDir], childSpawnOpts);
+      if (detach) child.unref();
+      else onExit(child);
       break;
     }
     case 'continue': {
-      const child = spawn('cn', [], { stdio: 'inherit', cwd: projectDir });
-      onExit(child);
+      const child = spawn('cn', [], childSpawnOpts);
+      if (detach) child.unref();
+      else onExit(child);
       break;
     }
     case 'copilot': {
-      const child = spawn('copilot', [], { stdio: 'inherit', cwd: projectDir });
-      onExit(child);
+      const child = spawn('copilot', [], childSpawnOpts);
+      if (detach) child.unref();
+      else onExit(child);
       break;
     }
     case 'cline': {
+      if (detach) {
+        console.error(
+          '[picklejar] Cline runs in VS Code — open this folder with the Cline extension. Hooks: .clinerules/hooks',
+        );
+        return;
+      }
       console.log(
         'Cline runs inside VS Code — open this folder in VS Code with the Cline extension. Hooks in .clinerules/hooks are active.',
       );
@@ -208,16 +226,24 @@ export function spawnAgent(agent, projectDir) {
       break;
     }
     case 'opencode': {
-      const child = spawn('opencode', [], { stdio: 'inherit', cwd: projectDir });
-      onExit(child);
+      const child = spawn('opencode', [], childSpawnOpts);
+      if (detach) child.unref();
+      else onExit(child);
       break;
     }
     case 'kilo': {
-      const child = spawn('kilo', [], { stdio: 'inherit', cwd: projectDir });
-      onExit(child);
+      const child = spawn('kilo', [], childSpawnOpts);
+      if (detach) child.unref();
+      else onExit(child);
       break;
     }
     case 'antigravity': {
+      if (detach) {
+        console.error(
+          '[picklejar] Antigravity: open this project in the IDE. Context: .agent/picklejar-resume.md',
+        );
+        return;
+      }
       console.log(
         'Google Antigravity is an IDE — open this project there. After `picklejar resume`, context is in .agent/picklejar-resume.md (and AGENTS.md if you also use opencode/kilo workflow).',
       );
@@ -225,12 +251,13 @@ export function spawnAgent(agent, projectDir) {
       break;
     }
     case 'aider': {
-      const child = spawn('aider', [], { stdio: 'inherit', cwd: projectDir });
-      onExit(child);
+      const child = spawn('aider', [], childSpawnOpts);
+      if (detach) child.unref();
+      else onExit(child);
       break;
     }
     default:
       console.error(`Unknown agent '${agent}'`);
-      process.exitCode = 1;
+      if (!detach) process.exitCode = 1;
   }
 }

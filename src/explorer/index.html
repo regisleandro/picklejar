@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Picklejar Explorer</title>
+  <style>
+    :root {
+      --bg: #f8f9fa;
+      --surface: #fff;
+      --text: #1a1a1a;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --accent: #2563eb;
+      --ok: #22c55e;
+      --ended: #a855f7;
+      --err: #ef4444;
+      --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #111827;
+        --surface: #1f2937;
+        --text: #f3f4f6;
+        --muted: #9ca3af;
+        --border: #374151;
+        --accent: #60a5fa;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    header h1 { margin: 0; font-size: 1.1rem; font-weight: 600; }
+    .btn {
+      font: inherit;
+      padding: 0.35rem 0.75rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+    }
+    .btn:hover { border-color: var(--accent); }
+    .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(240px, 320px) 1fr;
+      gap: 0;
+      min-height: calc(100vh - 52px);
+    }
+    @media (max-width: 768px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { max-height: 40vh; overflow: auto; border-bottom: 1px solid var(--border); }
+    }
+    .sidebar {
+      border-right: 1px solid var(--border);
+      background: var(--surface);
+      overflow-y: auto;
+      padding: 0.5rem;
+    }
+    .card {
+      padding: 0.65rem 0.75rem;
+      margin-bottom: 0.5rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      cursor: pointer;
+      text-align: left;
+      width: 100%;
+      background: var(--surface);
+      color: var(--text);
+      font: inherit;
+    }
+    .card:hover { border-color: var(--accent); }
+    .card.selected { border-color: var(--accent); background: rgba(37, 99, 235, 0.08); }
+    .card-title { font-weight: 600; font-size: 0.9rem; margin: 0 0 0.25rem; }
+    .card-meta { font-size: 0.75rem; color: var(--muted); }
+    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+    .dot-active { background: var(--ok); }
+    .dot-ended { background: var(--ended); }
+    .dot-error { background: var(--err); }
+    .main { padding: 1rem; overflow-y: auto; }
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+    .panel h2 { margin: 0 0 0.75rem; font-size: 1rem; }
+    .timeline { border-left: 2px solid var(--border); margin-left: 6px; padding-left: 1rem; }
+    .tl-item { position: relative; margin-bottom: 0.6rem; font-size: 0.85rem; }
+    .tl-item::before {
+      content: '';
+      position: absolute;
+      left: -1rem;
+      top: 0.35rem;
+      width: 8px;
+      height: 8px;
+      margin-left: -5px;
+      border-radius: 50%;
+      background: var(--muted);
+    }
+    .tl-item.tl-ok::before { background: var(--ok); }
+    .tl-item.tl-bad::before { background: var(--err); }
+    .tl-item.tl-muted { opacity: 0.5; }
+    .tl-kind { color: var(--muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; }
+    .actions-row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
+    .open-panel { margin-top: 0.75rem; padding: 0.75rem; border: 1px dashed var(--border); border-radius: 8px; }
+    .open-panel label { display: block; margin: 0.35rem 0; font-size: 0.85rem; }
+    .toast {
+      position: fixed;
+      bottom: 1rem;
+      right: 1rem;
+      padding: 0.5rem 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      font-size: 0.85rem;
+      z-index: 100;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .toast.show { opacity: 1; }
+    .error-text { color: var(--err); }
+    .md-preview { white-space: pre-wrap; font-size: 0.85rem; line-height: 1.45; margin: 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Picklejar Explorer</h1>
+    <button type="button" class="btn" id="refresh">Refresh</button>
+  </header>
+  <div class="layout">
+    <aside class="sidebar" id="sidebar"></aside>
+    <main class="main" id="main">
+      <p class="muted" id="placeholder">Select a session to view details.</p>
+    </main>
+  </div>
+  <div class="toast" id="toast" role="status"></div>
+  <script>
+(function () {
+  const AGENTS = ['claude', 'cursor', 'opencode', 'cline', 'aider'];
+  const PROFILES = ['balanced', 'strict', 'audit', 'recovery'];
+  const EXCLUDE_OPTS = [
+    { value: 'history', label: 'History' },
+    { value: 'instructions', label: 'Instructions' },
+    { value: 'discarded paths', label: 'Discarded paths' },
+  ];
+
+  let sessions = [];
+  let selectedId = null;
+  let summaryCache = null;
+  let actionsCache = null;
+
+  const $ = (id) => document.getElementById(id);
+
+  function toast(msg) {
+    const el = $('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), 2800);
+  }
+
+  function formatTime(ts) {
+    const d = new Date(ts);
+    return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  }
+
+  function relTime(ts) {
+    const s = Math.floor((Date.now() - ts) / 1000);
+    if (s < 60) return s + ' sec ago';
+    const m = Math.floor(s / 60);
+    if (m < 60) return m + ' min ago';
+    const h = Math.floor(m / 60);
+    if (h < 48) return h + ' hr ago';
+    const days = Math.floor(h / 24);
+    return days + ' day' + (days === 1 ? '' : 's') + ' ago';
+  }
+
+  function dotClass(status) {
+    if (status === 'ended') return 'dot-ended';
+    if (status === 'error') return 'dot-error';
+    return 'dot-active';
+  }
+
+  function actionKind(toolName) {
+    const t = String(toolName || '').toLowerCase();
+    if (t.includes('user')) return 'request';
+    if (t.includes('read')) return 'read';
+    if (/edit|write|patch|apply|str_replace|multiedit/.test(t)) return 'edit';
+    return 'command';
+  }
+
+  function tlClasses(row) {
+    let c = 'tl-item';
+    if (row.curationStatus === 'confirmed') c += ' tl-ok';
+    else if (['discarded', 'hallucinated', 'inconsistent'].includes(row.curationStatus)) c += ' tl-bad';
+    if (row.includeInBrainDump === false) c += ' tl-muted';
+    return c;
+  }
+
+  async function loadSessions() {
+    const r = await fetch('/api/sessions');
+    if (!r.ok) throw new Error('Failed to load sessions');
+    sessions = await r.json();
+    renderSidebar();
+    if (selectedId && !sessions.some((s) => s.sessionId === selectedId)) {
+      selectedId = null;
+      $('main').innerHTML = '<p class="muted" id="placeholder">Select a session.</p>';
+    }
+  }
+
+  function renderSidebar() {
+    const el = $('sidebar');
+    el.innerHTML = '';
+    for (const s of sessions) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'card' + (s.sessionId === selectedId ? ' selected' : '');
+      const origin = s.agentOrigin || '—';
+      const errLine = s.status === 'error' && s.errorSummary
+        ? `<div class="card-meta error-text">${escapeAttr(s.errorSummary.slice(0, 80))}${s.errorSummary.length > 80 ? '…' : ''}</div>`
+        : '';
+      btn.innerHTML = `
+        <p class="card-title"><span class="dot ${dotClass(s.status)}"></span>${escapeAttr(s.title)}</p>
+        <div class="card-meta">${escapeAttr(origin)} · ${relTime(s.updatedAt)} · ${s.actionsCount} actions</div>
+        ${errLine}
+      `;
+      btn.addEventListener('click', () => selectSession(s.sessionId));
+      el.appendChild(btn);
+    }
+  }
+
+  function escapeAttr(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  async function selectSession(id) {
+    selectedId = id;
+    summaryCache = null;
+    actionsCache = null;
+    renderSidebar();
+    $('main').innerHTML = '<p>Loading…</p>';
+
+    try {
+      const [detailR, sumR, actR] = await Promise.all([
+        fetch('/api/sessions/' + encodeURIComponent(id)),
+        fetch('/api/sessions/' + encodeURIComponent(id) + '/summary'),
+        fetch('/api/sessions/' + encodeURIComponent(id) + '/actions'),
+      ]);
+      if (!detailR.ok) throw new Error('Session not found');
+      const detail = await detailR.json();
+      summaryCache = await sumR.json();
+      actionsCache = await actR.json();
+      renderDetail(detail);
+    } catch (e) {
+      $('main').innerHTML = '<p class="error-text">Failed to load session.</p>';
+      toast(String(e.message || e));
+    }
+  }
+
+  function renderDetail(vm) {
+    const goal = vm.goal || vm.title;
+    const stLabel = vm.status === 'ended' ? 'completed' : vm.status;
+    const files = (vm.activeFiles || []).slice(0, 8).map((f) => f.split('/').pop()).join(', ');
+
+    let timelineHtml = '';
+    for (const row of actionsCache || []) {
+      const kind = actionKind(row.toolName);
+      timelineHtml += `
+        <div class="${tlClasses(row)}">
+          <span class="tl-kind">${kind}</span> ${escapeAttr(row.toolName)} — ${escapeAttr(row.summary || '')}
+        </div>`;
+    }
+    if (files) {
+      timelineHtml += `<div class="tl-item" style="margin-top:0.75rem"><strong>Files touched</strong><br>${escapeAttr(files)}</div>`;
+    }
+
+    const openPanelId = 'open-panel';
+    $('main').innerHTML = `
+      <div class="panel">
+        <h2>Executive summary</h2>
+        <p><strong>Goal</strong><br>${escapeAttr(goal)}</p>
+        <p><strong>Status</strong> <span class="dot ${dotClass(vm.status)}"></span> ${escapeAttr(stLabel)}</p>
+        <p><strong>Updated</strong> ${relTime(vm.updatedAt)} (${formatTime(vm.updatedAt)})</p>
+        ${vm.lastPlannedAction ? `<p><strong>Next action</strong><br>${escapeAttr(vm.lastPlannedAction)}</p>` : ''}
+        ${vm.errorSummary ? `<p class="error-text"><strong>Error</strong><br>${escapeAttr(vm.errorSummary)}</p>` : ''}
+        ${(vm.decisions && vm.decisions.length) ? `<p><strong>Decisions</strong><br>${vm.decisions.map((d) => escapeAttr(d)).join('<br>')}</p>` : ''}
+      </div>
+      <div class="panel">
+        <h2>Human summary</h2>
+        <pre class="md-preview">${escapeAttr(summaryCache.humanSummary || '')}</pre>
+      </div>
+      <div class="panel">
+        <h2>Timeline</h2>
+        <div class="timeline">${timelineHtml || '<p class="muted">No actions.</p>'}</div>
+      </div>
+      <div class="panel">
+        <h2>Actions</h2>
+        <div class="actions-row">
+          <button type="button" class="btn btn-primary" id="copy-sum">Copy summary</button>
+          <button type="button" class="btn btn-primary" id="copy-hand">Copy handoff</button>
+          <button type="button" class="btn" id="export-md">Export .md</button>
+        </div>
+        <button type="button" class="btn" id="toggle-open" style="margin-top:0.5rem">Open in agent ▾</button>
+        <div class="open-panel" id="${openPanelId}" hidden>
+          <label>Agent<br>
+            <select id="sel-agent">${AGENTS.map((a) => '<option value="' + a + '">' + a + '</option>').join('')}</select>
+          </label>
+          <label>Profile<br>
+            <select id="sel-profile">${PROFILES.map((p) => '<option value="' + p + '">' + p + '</option>').join('')}</select>
+          </label>
+          <div id="exclude-box">${EXCLUDE_OPTS.map((o) => '<label><input type="checkbox" value="' + o.value + '"> ' + o.label + '</label>').join('')}</div>
+          <button type="button" class="btn btn-primary" id="confirm-open" style="margin-top:0.5rem">Confirm and open</button>
+        </div>
+      </div>
+    `;
+
+    $('copy-sum').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(summaryCache.humanSummary || '');
+        toast('Copied summary');
+      } catch {
+        toast('Clipboard failed');
+      }
+    });
+    $('copy-hand').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(summaryCache.handoffSummary || '');
+        toast('Copied handoff');
+      } catch {
+        toast('Clipboard failed');
+      }
+    });
+    $('export-md').addEventListener('click', () => {
+      const blob = new Blob([summaryCache.handoffSummary || ''], { type: 'text/markdown' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'picklejar-' + vm.sessionId + '-handoff.md';
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast('Download started');
+    });
+    $('toggle-open').addEventListener('click', () => {
+      const p = $(openPanelId);
+      p.hidden = !p.hidden;
+    });
+    $('confirm-open').addEventListener('click', async () => {
+      const agent = $('sel-agent').value;
+      const profile = $('sel-profile').value;
+      const exclude = [];
+      document.querySelectorAll('#exclude-box input:checked').forEach((cb) => exclude.push(cb.value));
+      try {
+        const r = await fetch('/api/sessions/' + encodeURIComponent(vm.sessionId) + '/open', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agent, profile, exclude }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.error || 'Open failed');
+        toast('Opened ' + agent);
+      } catch (e) {
+        toast(String(e.message || e));
+      }
+    });
+  }
+
+  $('refresh').addEventListener('click', () => {
+    loadSessions().then(() => toast('Refreshed')).catch((e) => toast(String(e.message || e)));
+  });
+
+  loadSessions().catch((e) => {
+    $('sidebar').innerHTML = '<p class="error-text">' + escapeAttr(String(e.message || e)) + '</p>';
+  });
+})();
+  </script>
+</body>
+</html>

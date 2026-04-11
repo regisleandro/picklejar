@@ -105,6 +105,7 @@ export async function prepareResumeContext({
  * @param {NormalizedBrainDumpOptions} params.brainDumpOpts
  * @param {PicklejarSession} [params.session]
  * @param {(injected: boolean) => void} [params.onInjected] called after inject, before spawn
+ * @param {boolean} [params.detachSpawn] spawn agent in background (explorer HTTP server)
  * @returns {Promise<{ success: true, agent: string, injected: boolean }>}
  */
 export async function openSessionInAgent({
@@ -115,6 +116,7 @@ export async function openSessionInAgent({
   brainDumpOpts,
   session,
   onInjected,
+  detachSpawn = false,
 }) {
   await prepareResumeContext({
     projectDir,
@@ -125,7 +127,7 @@ export async function openSessionInAgent({
   });
   const injected = await injectResumeContext(agent, projectDir);
   onInjected?.(injected);
-  spawnAgent(agent, projectDir);
+  spawnAgent(agent, projectDir, { detach: detachSpawn });
   return { success: true, agent, injected };
 }
 
