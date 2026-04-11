@@ -76,7 +76,7 @@ export function buildSessionViewModel(session, snapshotsCount) {
     errorSummary: session.lastError ? String(session.lastError) : null,
     actionsCount: session.actions?.length ?? 0,
     snapshotsCount,
-    activeFiles: collectSessionFiles(session, 10),
+    activeFiles: collectSessionFiles(session, Infinity),
     decisions: (session.decisions ?? []).map((d) => d.description),
     lastPlannedAction: session.lastPlannedAction ? String(session.lastPlannedAction) : null,
     curationStats: summarizeCurationStats(session),

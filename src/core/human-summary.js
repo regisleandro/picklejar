@@ -71,6 +71,18 @@ function actionBulletLine(action) {
 }
 
 /**
+ * Full title for the human summary heading — not truncated, unlike the CLI list title.
+ * @param {PicklejarSession} session
+ */
+function deriveFullTitle(session) {
+  const goal = session.goal?.replace(/\s+/g, ' ').trim();
+  if (goal) return goal;
+  const planned = session.lastPlannedAction?.replace(/\s+/g, ' ').trim();
+  if (planned) return planned;
+  return deriveSessionTitle(session);
+}
+
+/**
  * @param {PicklejarSession} session
  * @param {{ maxActions?: number }} [options]
  */
@@ -78,7 +90,7 @@ export function compileHumanSummary(session, options = {}) {
   const maxActions = options.maxActions ?? 5;
   const lines = [];
 
-  lines.push(`## ${deriveSessionTitle(session)}`);
+  lines.push(`## ${deriveFullTitle(session)}`);
   lines.push('');
 
   const status = deriveSessionStatus(session);

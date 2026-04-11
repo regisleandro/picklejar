@@ -4,11 +4,12 @@ import { createSession, addAction } from '../src/core/state.js';
 import { deriveSessionTitle } from '../src/core/list-summary.js';
 
 describe('human-summary', () => {
-  it('matches deriveSessionTitle for heading', () => {
+  it('uses full goal as heading, not the truncated CLI title', () => {
     const s = createSession('sid', '/p');
-    s.goal = 'Fix the bug';
+    s.goal = 'Fix the bug in the authentication module so that users can log in again';
     const md = compileHumanSummary(s);
-    expect(md).toContain(`## ${deriveSessionTitle(s)}`);
+    expect(md).toContain(`## ${s.goal.trim()}`);
+    expect(md.startsWith(`## ${s.goal.trim()}`)).toBe(true);
   });
 
   it('fits quick reading', () => {
