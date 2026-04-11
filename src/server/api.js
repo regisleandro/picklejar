@@ -68,7 +68,13 @@ function sendHTML(res, code, html) {
  */
 function injectExplorerBootstrap(html, bootstrap) {
   const script = `<script>window.__PICKLEJAR_EXPLORER__=${serializeForInlineScript(bootstrap)};</script>`;
-  return html.replace('<script src="/vendor/marked.js"></script>', `${script}\n  <script src="/vendor/marked.js"></script>`);
+  const markedScriptTagPattern = /([ \t]*)<script src="\/vendor\/marked\.js"><\/script>/;
+  if (markedScriptTagPattern.test(html)) {
+    return html.replace(markedScriptTagPattern, (_match, indent = '') => {
+      return `${script}\n${indent}<script src="/vendor/marked.js"></script>`;
+    });
+  }
+  return html.replace('</body>', `  ${script}\n</body>`);
 }
 
 /**

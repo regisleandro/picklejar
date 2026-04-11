@@ -9,4 +9,6 @@ coverage/
 .picklejar/.picklejar.lock
 # picklejar
 .picklejar/force-resume.json
+.picklejar/resume-context.md
+codex/
 .github/hooks/logs/
