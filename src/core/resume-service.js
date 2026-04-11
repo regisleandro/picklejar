@@ -127,7 +127,7 @@ export async function openSessionInAgent({
   });
   const injected = await injectResumeContext(agent, projectDir);
   onInjected?.(injected);
-  spawnAgent(agent, projectDir, { detach: detachSpawn });
+  await spawnAgent(agent, projectDir, { detach: detachSpawn });
   return { success: true, agent, injected };
 }
 

@@ -168,11 +168,41 @@ export async function injectResumeContext(agent, projectDir) {
 }
 
 /**
+ * @param {string} command
+ * @param {string[]} args
+ * @param {import('node:child_process').SpawnOptionsWithoutStdio & { stdio: 'ignore' | 'inherit' }} childSpawnOpts
+ * @param {boolean} detach
+ * @param {(child: import('node:child_process').ChildProcessWithoutNullStreams | import('node:child_process').ChildProcessByStdio<null, null, null>) => void} [onSpawn]
+ */
+function spawnChecked(command, args, childSpawnOpts, detach, onSpawn) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, childSpawnOpts);
+    let settled = false;
+
+    child.once('error', (err) => {
+      if (settled) return;
+      settled = true;
+      reject(
+        new Error(`Failed to launch '${command}'. Ensure the CLI is installed and available in PATH. (${err.message})`),
+      );
+    });
+
+    child.once('spawn', () => {
+      if (settled) return;
+      settled = true;
+      if (detach) child.unref();
+      onSpawn?.(child);
+      resolve();
+    });
+  });
+}
+
+/**
  * @param {string} agent
  * @param {string} projectDir
  * @param {{ detach?: boolean }} [spawnOpts] when detach, child is spawned in the background without replacing this process (explorer server)
  */
-export function spawnAgent(agent, projectDir, spawnOpts = {}) {
+export async function spawnAgent(agent, projectDir, spawnOpts = {}) {
   const detach = Boolean(spawnOpts.detach);
 
   const onExit = (child) => {
@@ -189,35 +219,32 @@ export function spawnAgent(agent, projectDir, spawnOpts = {}) {
 
   switch (agent) {
     case 'claude': {
-      const child = spawn('claude', [], childSpawnOpts);
-      if (detach) child.unref();
-      else onExit(child);
+      await spawnChecked('claude', [], childSpawnOpts, detach, (child) => {
+        if (!detach) onExit(child);
+      });
       break;
     }
     case 'cursor': {
-      const child = spawn('cursor', [projectDir], childSpawnOpts);
-      if (detach) child.unref();
-      else onExit(child);
+      await spawnChecked('cursor', [projectDir], childSpawnOpts, detach, (child) => {
+        if (!detach) onExit(child);
+      });
       break;
     }
     case 'continue': {
-      const child = spawn('cn', [], childSpawnOpts);
-      if (detach) child.unref();
-      else onExit(child);
+      await spawnChecked('cn', [], childSpawnOpts, detach, (child) => {
+        if (!detach) onExit(child);
+      });
       break;
     }
     case 'copilot': {
-      const child = spawn('copilot', [], childSpawnOpts);
-      if (detach) child.unref();
-      else onExit(child);
+      await spawnChecked('copilot', [], childSpawnOpts, detach, (child) => {
+        if (!detach) onExit(child);
+      });
       break;
     }
     case 'cline': {
       if (detach) {
-        console.error(
-          '[picklejar] Cline runs in VS Code — open this folder with the Cline extension. Hooks: .clinerules/hooks',
-        );
-        return;
+        throw new Error('Cline runs inside VS Code and cannot be launched automatically from Open in agent.');
       }
       console.log(
         'Cline runs inside VS Code — open this folder in VS Code with the Cline extension. Hooks in .clinerules/hooks are active.',
@@ -226,23 +253,20 @@ export function spawnAgent(agent, projectDir, spawnOpts = {}) {
       break;
     }
     case 'opencode': {
-      const child = spawn('opencode', [], childSpawnOpts);
-      if (detach) child.unref();
-      else onExit(child);
+      await spawnChecked('opencode', [], childSpawnOpts, detach, (child) => {
+        if (!detach) onExit(child);
+      });
       break;
     }
     case 'kilo': {
-      const child = spawn('kilo', [], childSpawnOpts);
-      if (detach) child.unref();
-      else onExit(child);
+      await spawnChecked('kilo', [], childSpawnOpts, detach, (child) => {
+        if (!detach) onExit(child);
+      });
       break;
     }
     case 'antigravity': {
       if (detach) {
-        console.error(
-          '[picklejar] Antigravity: open this project in the IDE. Context: .agent/picklejar-resume.md',
-        );
-        return;
+        throw new Error('Antigravity is IDE-based and cannot be launched automatically from Open in agent.');
       }
       console.log(
         'Google Antigravity is an IDE — open this project there. After `picklejar resume`, context is in .agent/picklejar-resume.md (and AGENTS.md if you also use opencode/kilo workflow).',
@@ -251,13 +275,12 @@ export function spawnAgent(agent, projectDir, spawnOpts = {}) {
       break;
     }
     case 'aider': {
-      const child = spawn('aider', [], childSpawnOpts);
-      if (detach) child.unref();
-      else onExit(child);
+      await spawnChecked('aider', [], childSpawnOpts, detach, (child) => {
+        if (!detach) onExit(child);
+      });
       break;
     }
     default:
-      console.error(`Unknown agent '${agent}'`);
-      if (!detach) process.exitCode = 1;
+      throw new Error(`Unknown agent '${agent}'`);
   }
 }

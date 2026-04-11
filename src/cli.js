@@ -23,7 +23,6 @@ import { picklejarRoot, forceResumePath, resumeContextPath, snapshotsDir } from 
 import { summarizeSessionForList } from './core/list-summary.js';
 import { listSessions } from './core/sessions.js';
 import { formatRelativeTime } from './core/human-summary.js';
-import { registerSummaryCommand } from './commands/summary.js';
 import { registerExploreCommand } from './commands/explore.js';
 import { openSessionInAgent } from './core/resume-service.js';
 import {
@@ -1182,7 +1181,7 @@ program
     if (injected) {
       console.log('Resume context injected for', agent);
     }
-    spawnAgent(agent, projectDir);
+    await spawnAgent(agent, projectDir);
   });
 
 program
@@ -1252,7 +1251,6 @@ cleanCmd.action(async (dir) => {
   console.log('Cleanup done.');
 });
 
-registerSummaryCommand(program);
 registerExploreCommand(program);
 
 program.parseAsync(process.argv);
