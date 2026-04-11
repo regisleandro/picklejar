@@ -1,23 +1,51 @@
-# Picklejar — capability matrix by agent
+# Picklejar Capability Matrix
 
-**Current scope:** OpenAI Codex is **out of scope** for this roadmap. Integrations split into a **hooks track** (per-tool capture) and an **instructions / session track** (resume/context with less granularity).
+This matrix reflects the current integrations implemented in `src/agents/` and `src/core/agent-templates.js`.
 
-| Agent | Track | Per-tool capture | Session start / resume | Instructions file | `picklejar start` | E2E automation |
-|--------|--------|------------------|-------------------------|------------------------|-------------------|----------------|
-| **Claude Code** | hooks | Yes (PostToolUse) | Yes (SessionStart + force-resume) | `CLAUDE.md` (resume injected) | `claude` | High |
-| **Cursor** | hooks | Yes (`postToolUse`) | Yes (`sessionStart` + same core) | Optional: `.claude/` compatible | Launches IDE (see README) | Medium |
-| **Continue CLI** | hooks | Yes (Claude-compatible) | Yes | Via hooks in `.continue/settings.json` | `continue` / per docs | Medium |
-| **GitHub Copilot CLI** | hooks | Yes (`postToolUse` when available in your build) | Yes (`sessionStart`) | `.github/copilot-instructions.md` (recommended) | `copilot` (if on PATH) | Medium |
-| **Cline** | hooks | Yes (`PostToolUse`) | Yes (`TaskStart` / `TaskResume` → core) | `.clinerules` + hooks | VS Code extension | Medium |
-| **OpenCode** | instructions/session | Limited (no stable PostToolUse parity in core) | `resume` + `AGENTS.md` | `AGENTS.md` | `opencode` | Low–medium |
-| **Kilo** | instructions/session | Same as OpenCode (CLI fork) | Same as OpenCode | `AGENTS.md` | `kilo` | Low–medium |
-| **Antigravity** | instructions/skills | MVP: no stably documented tool hooks | Injection into `.agent/` | `.agent/picklejar-resume.md` | — (IDE) | Low |
-| **Aider** | instructions/session | Via conventions / manual flow | `resume` + conventions file | `CONVENTIONS.md` (optional) | `aider` | Low |
+Integrations are split into:
+
+- hooks track: Picklejar captures tool/session events directly through agent hooks
+- instructions track: Picklejar prepares resume context and injects it into an instruction file, but does not rely on per-tool hooks
+
+## Matrix
+
+| Agent | Track | Per-tool capture | Session start / resume | Resume injection target | `picklejar start` behavior | Notes |
+|--------|-------|------------------|-------------------------|-------------------------|----------------------------|-------|
+| `claude` | hooks | Yes | Yes | `CLAUDE.md` | launches `claude` | Uses Claude-style `SessionStart` hooks |
+| `cursor` | hooks | Yes | Yes | `CLAUDE.md` and `AGENTS.md` | launches `cursor <projectDir>` | Uses `.cursor/hooks.json` |
+| `continue` | hooks | Yes | Yes | `CLAUDE.md` and `AGENTS.md` | launches `cn` | Uses Claude-compatible `.continue/settings.json` |
+| `copilot` | hooks | Partial / build-dependent | Yes | `AGENTS.md` | launches `copilot` | Installs `.github/hooks/picklejar-agent.json` plus scripts |
+| `cline` | hooks | Yes | Yes | `CLAUDE.md` and `AGENTS.md` | prints IDE guidance | Installs `.clinerules/hooks/*` |
+| `opencode` | instructions | No | Via `resume` / `open` | `AGENTS.md` | launches `opencode` | No hook parity in core |
+| `kilo` | instructions | No | Via `resume` / `open` | `AGENTS.md` | launches `kilo` | OpenCode-compatible workflow |
+| `antigravity` | instructions | No | Via `resume` / `open` | `.agent/picklejar-resume.md` | prints IDE guidance | IDE-based flow |
+| `aider` | instructions | No | Via `resume` / `open` | `CONVENTIONS.md` | launches `aider` | Optional conventions-file workflow |
+
+## Shared Runtime
+
+All integrations use the same project-local runtime under `.picklejar/`:
+
+- `config.json`
+- `hooks/run-hook.js`
+- `snapshots/`
+- `transcripts/`
+- `resume-context.md`
+- `force-resume.json`
+
+## Hook Coverage
+
+Where the host agent supports it, Picklejar handles these lifecycle points:
+
+- post-tool-use
+- session-start / task-start / task-resume
+- pre-compact
+- stop
+- session-end
 
 ## Notes
 
-- **Hooks** reuse `.picklejar/hooks/run-hook.js` → scripts shipped with `picklejar-agent` (`src/hooks/*`).
-- **Normalization:** `post-tool-use` accepts Claude-, Cursor-, and Cline-style payloads and generic JSON (`tool_output`, `result`, etc.).
-- **Curation layer:** persisted action metadata can exclude hallucinations, dead ends, and inconsistent steps from `resume` / `export` without deleting the original audit trail.
-- **Trusted handoff:** generated brain dumps now prioritize current trusted state, retained active files, and recent trusted actions; discarded paths can be added back explicitly for auditability.
-- **Antigravity:** MVP integration centered on a versioned file under `.agent/`; extend when a stable hooks API exists.
+- payload normalization accepts Claude-, Cursor-, Cline-, and generic JSON-shaped tool events
+- exported and resumed brain dumps are curation-aware when action metadata is present
+- Explorer handoff uses the same resume-service path as `picklejar open`
+- local Explorer sessions use an ephemeral token; remote Explorer mode prints the token explicitly
+- OpenAI Codex is not part of the current integration scope
