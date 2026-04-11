@@ -8,6 +8,11 @@ import { compileBrainDump, listSelectableActions } from '../core/compiler.js';
 import { loadConfig } from '../core/config.js';
 import { openSessionInAgent, buildHandoffDumpOptions } from '../core/resume-service.js';
 import { AGENT_IDS } from '../agents/registry.js';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const markedPath = path.join(path.dirname(require.resolve('marked/package.json')), 'lib/marked.umd.js');
+const purifyPath = path.join(path.dirname(require.resolve('dompurify')), 'purify.min.js');
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -88,6 +93,20 @@ export async function createExplorerServer(projectDir) {
     try {
       if (req.method === 'GET' && (p === '/' || p === '/index.html')) {
         sendHTML(res, 200, explorerHtml);
+        return;
+      }
+
+      if (req.method === 'GET' && p === '/vendor/marked.js') {
+        const data = await fs.readFile(markedPath, 'utf8');
+        res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', ...corsHeaders() });
+        res.end(data);
+        return;
+      }
+
+      if (req.method === 'GET' && p === '/vendor/dompurify.js') {
+        const data = await fs.readFile(purifyPath, 'utf8');
+        res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', ...corsHeaders() });
+        res.end(data);
         return;
       }
 
