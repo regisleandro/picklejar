@@ -24,6 +24,7 @@ import { summarizeSessionForList } from './core/list-summary.js';
 import { listSessions } from './core/sessions.js';
 import { formatRelativeTime } from './core/human-summary.js';
 import { registerSummaryCommand } from './commands/summary.js';
+import { openSessionInAgent } from './core/resume-service.js';
 import {
   AGENT_IDS,
   CAPABILITIES,
@@ -1144,20 +1145,20 @@ openCmd.action(async (id, dir) => {
       return;
     }
     const cfg = await loadConfig(projectDir);
-    const dumpOptions = await resolveBrainDumpOptions(loaded.session, opts);
-    const md = compileBrainDump(loaded.session, { maxTokens: cfg.maxTokens, ...dumpOptions });
-    await fs.mkdir(picklejarRoot(projectDir), { recursive: true });
-    await fs.writeFile(resumeContextPath(projectDir), md, 'utf8');
-    await fs.writeFile(
-      forceResumePath(projectDir),
-      JSON.stringify({ sessionId: id, at: Date.now() }, null, 2),
-      'utf8',
-    );
-    const injected = await injectResumeContext(agent, projectDir);
-    if (injected) {
-      console.log('Resume context injected for', agent);
-    }
-    spawnAgent(agent, projectDir);
+    const brainDumpOpts = await resolveBrainDumpOptions(loaded.session, opts);
+    await openSessionInAgent({
+      projectDir,
+      sessionId: id,
+      agent,
+      maxTokens: cfg.maxTokens,
+      brainDumpOpts,
+      session: loaded.session,
+      onInjected: (injected) => {
+        if (injected) {
+          console.log('Resume context injected for', agent);
+        }
+      },
+    });
   } catch (e) {
     console.error(/** @type {Error} */ (e).message || e);
     process.exitCode = 1;
