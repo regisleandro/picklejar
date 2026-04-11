@@ -15,6 +15,7 @@ const markedPath = path.join(path.dirname(require.resolve('marked/package.json')
 const purifyPath = path.join(path.dirname(require.resolve('dompurify')), 'purify.min.js');
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const faviconPath = path.join(__dirname, '../explorer/picklejar.ico');
 const MAX_JSON_BODY_BYTES = 64 * 1024;
 const COMMON_HEADERS = {
   'Cache-Control': 'no-store',
@@ -266,6 +267,17 @@ export async function createExplorerServer(projectDir, options = {}) {
       if (req.method === 'GET' && (p === '/' || p === '/index.html')) {
         noteServerActivity();
         sendHTML(res, 200, explorerHtml);
+        return;
+      }
+
+      if (req.method === 'GET' && (p === '/favicon.ico' || p === '/picklejar.ico')) {
+        const data = await fs.readFile(faviconPath);
+        res.writeHead(200, {
+          'Content-Type': 'image/x-icon',
+          'Cache-Control': 'public, max-age=3600',
+          'X-Content-Type-Options': 'nosniff',
+        });
+        res.end(data);
         return;
       }
 

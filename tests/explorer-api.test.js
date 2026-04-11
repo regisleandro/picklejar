@@ -104,6 +104,13 @@ describe('explorer api', () => {
     expect(body).toContain('Picklejar Explorer</h1>');
     expect(body).toContain('data-theme="dark"');
     expect(body).toContain('id="theme-toggle-group"');
+    expect(body).toContain('href="/favicon.ico"');
+  });
+
+  it('GET /favicon.ico serves the packaged icon', async () => {
+    const { status, body } = await httpGet(`http://127.0.0.1:${port}/favicon.ico`);
+    expect(status).toBe(200);
+    expect(body.length).toBeGreaterThan(0);
   });
 
   it('POST /api/sessions/:id/open delegates terminal handoff when callback is provided', async () => {
