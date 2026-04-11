@@ -61,5 +61,11 @@ describe('explorer api', () => {
     const { status, body } = await httpGet(`http://127.0.0.1:${port}/`);
     expect(status).toBe(200);
     expect(body).toContain('Picklejar Explorer');
+    expect(body).toContain('app-header');
+    expect(body).toContain('main-column');
+    expect(body).toContain('Picklejar Explorer</h1>');
+    expect(body).toContain('data-theme="dark"');
+    expect(body).toContain('id="theme-toggle-group"');
+    expect(body).toContain('id="header-agent"');
   });
 });

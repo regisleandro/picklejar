@@ -1,101 +1,339 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Picklejar Explorer</title>
   <style>
-    :root {
-      --bg: #f8f9fa;
-      --surface: #fff;
-      --text: #1a1a1a;
-      --muted: #6b7280;
-      --border: #e5e7eb;
-      --accent: #2563eb;
+    html[data-theme="dark"] {
+      --bg: #0c0c0e;
+      --bg-elevated: #121214;
+      --surface: #16161a;
+      --surface-hover: #1c1c21;
+      --border: #2a2a32;
+      --text: #f4f4f5;
+      --muted: #8b8b96;
+      --accent: #3b82f6;
+      --accent-hover: #60a5fa;
       --ok: #22c55e;
       --ended: #a855f7;
       --err: #ef4444;
-      --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --code-bg: #0f0f12;
+      --header-chip-bg: rgba(139, 92, 246, 0.2);
+      --header-chip-icon: #a78bfa;
     }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #111827;
-        --surface: #1f2937;
-        --text: #f3f4f6;
-        --muted: #9ca3af;
-        --border: #374151;
-        --accent: #60a5fa;
-      }
+    html[data-theme="light"] {
+      --bg: #f4f4f5;
+      --bg-elevated: #fff;
+      --surface: #fff;
+      --surface-hover: #f8f9fa;
+      --border: #e5e7eb;
+      --text: #18181b;
+      --muted: #71717a;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --code-bg: #f4f4f5;
+      --header-chip-bg: rgba(139, 92, 246, 0.12);
+      --header-chip-icon: #7c3aed;
+    }
+    :root {
+      --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --mono: ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace;
+      --header-h: 56px;
+      --actions-h: 64px;
     }
     * { box-sizing: border-box; }
+    html, body { height: 100%; }
     body {
       margin: 0;
       font-family: var(--font);
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
+      display: flex;
+      flex-direction: column;
     }
-    header {
+    .app-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 0.75rem 1rem;
+      flex-shrink: 0;
+      gap: 1rem;
+      min-height: var(--header-h);
+      padding: 0.5rem 1.25rem;
       border-bottom: 1px solid var(--border);
-      background: var(--surface);
+      background: var(--bg-elevated);
     }
-    header h1 { margin: 0; font-size: 1.1rem; font-weight: 600; }
-    .btn {
-      font: inherit;
-      padding: 0.35rem 0.75rem;
-      border-radius: 6px;
+    .app-header__brand {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.5rem 1rem;
+      min-width: 0;
+    }
+    .app-header h1 {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      flex-shrink: 0;
+    }
+    .app-header__toolbar {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 0.5rem 0.75rem;
+    }
+    .header-agent-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      max-width: min(220px, 36vw);
+      padding: 0.25rem 0.55rem 0.25rem 0.35rem;
+      border-radius: 8px;
       border: 1px solid var(--border);
       background: var(--surface);
+    }
+    .header-agent-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      flex-shrink: 0;
+      border-radius: 6px;
+      background: var(--header-chip-bg);
+      color: var(--header-chip-icon);
+    }
+    .header-agent-icon svg { display: block; }
+    #header-agent {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      line-height: 1.2;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .header-vdivider {
+      width: 1px;
+      height: 28px;
+      background: var(--border);
+      flex-shrink: 0;
+    }
+    .theme-toggle-group {
+      display: inline-flex;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      background: var(--bg);
+    }
+    .theme-toggle-group .theme-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      border: none;
+      border-right: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .theme-toggle-group .theme-btn:last-child { border-right: none; }
+    .theme-toggle-group .theme-btn:hover {
+      color: var(--accent);
+      background: var(--surface-hover);
+    }
+    .theme-toggle-group .theme-btn[aria-pressed="true"] {
+      color: var(--accent);
+      background: var(--surface);
+      box-shadow: inset 0 0 0 1px var(--accent);
+    }
+    .theme-toggle-group .theme-btn svg { display: block; }
+    .icon-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg);
       color: var(--text);
       cursor: pointer;
     }
-    .btn:hover { border-color: var(--accent); }
-    .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .icon-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .icon-btn svg { display: block; }
+    .btn {
+      font: inherit;
+      padding: 0.45rem 0.9rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text);
+      cursor: pointer;
+      font-size: 0.8125rem;
+    }
+    .btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    .btn-primary:hover {
+      background: var(--accent-hover);
+      border-color: var(--accent-hover);
+      color: #fff;
+    }
+    .btn-outline {
+      background: transparent;
+      color: var(--text);
+      border-color: var(--border);
+    }
+    .btn-outline:hover {
+      border-color: var(--muted);
+      color: var(--text);
+    }
     .layout {
       display: grid;
-      grid-template-columns: minmax(240px, 320px) 1fr;
+      grid-template-columns: minmax(260px, 300px) 1fr;
       gap: 0;
-      min-height: calc(100vh - 52px);
+      flex: 1;
+      min-height: 0;
     }
     @media (max-width: 768px) {
       .layout { grid-template-columns: 1fr; }
-      .sidebar { max-height: 40vh; overflow: auto; border-bottom: 1px solid var(--border); }
+      .sidebar {
+        max-height: 38vh;
+        overflow: auto;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+      }
+      .main-column { min-height: 50vh; }
     }
     .sidebar {
       border-right: 1px solid var(--border);
-      background: var(--surface);
+      background: var(--bg-elevated);
       overflow-y: auto;
-      padding: 0.5rem;
+      padding: 0.625rem 0.5rem;
     }
     .card {
-      padding: 0.65rem 0.75rem;
-      margin-bottom: 0.5rem;
-      border-radius: 8px;
-      border: 1px solid var(--border);
+      position: relative;
+      padding: 0.7rem 0.75rem 0.7rem 0.85rem;
+      margin-bottom: 0.4rem;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      border-left: 3px solid transparent;
       cursor: pointer;
       text-align: left;
       width: 100%;
-      background: var(--surface);
+      background: transparent;
       color: var(--text);
       font: inherit;
+      transition: background 0.12s ease, border-color 0.12s ease;
     }
-    .card:hover { border-color: var(--accent); }
-    .card.selected { border-color: var(--accent); background: rgba(37, 99, 235, 0.08); }
-    .card-title { font-weight: 600; font-size: 0.9rem; margin: 0 0 0.25rem; }
-    .card-meta { font-size: 0.75rem; color: var(--muted); }
-    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+    .card:hover {
+      background: var(--surface-hover);
+    }
+    .card.selected {
+      background: var(--surface);
+      border-color: var(--border);
+      border-left-color: var(--ok);
+    }
+    .card-title { font-weight: 600; font-size: 0.875rem; margin: 0 0 0.3rem; line-height: 1.3; }
+    .card-meta { font-size: 0.75rem; color: var(--muted); line-height: 1.35; }
+    .dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
     .dot-active { background: var(--ok); }
     .dot-ended { background: var(--ended); }
     .dot-error { background: var(--err); }
-    .main { padding: 1rem; overflow-y: auto; }
-    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
-    .panel h2 { margin: 0 0 0.75rem; font-size: 1rem; }
+    .main-column {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      min-width: 0;
+      background: var(--bg);
+    }
+    .detail-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1.25rem 1.5rem;
+      padding-bottom: 1rem;
+    }
+    .muted { color: var(--muted); }
+    .placeholder { margin: 0; font-size: 0.9rem; }
+    .section-kicker {
+      margin: 0 0 0.875rem;
+      font-size: 0.6875rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .detail-block {
+      padding-bottom: 1.25rem;
+      margin-bottom: 1.25rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .detail-block:last-of-type {
+      border-bottom: none;
+      margin-bottom: 0;
+      padding-bottom: 0;
+    }
+    .field-label {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 0.35rem;
+    }
+    .field-value { margin: 0 0 1rem; font-size: 0.9rem; line-height: 1.5; }
+    .field-value:last-child { margin-bottom: 0; }
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .status-text { text-transform: lowercase; }
+    .code-block {
+      margin: 0;
+      padding: 1rem 1.1rem;
+      font-family: var(--mono);
+      font-size: 0.8125rem;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+    }
+    .human-body {
+      margin: 0;
+      font-size: 0.875rem;
+      line-height: 1.55;
+      white-space: pre-wrap;
+    }
     .timeline { border-left: 2px solid var(--border); margin-left: 6px; padding-left: 1rem; }
-    .tl-item { position: relative; margin-bottom: 0.6rem; font-size: 0.85rem; }
+    .tl-item { position: relative; margin-bottom: 0.65rem; font-size: 0.8125rem; line-height: 1.4; }
     .tl-item::before {
       content: '';
       position: absolute;
@@ -110,10 +348,59 @@
     .tl-item.tl-ok::before { background: var(--ok); }
     .tl-item.tl-bad::before { background: var(--err); }
     .tl-item.tl-muted { opacity: 0.5; }
-    .tl-kind { color: var(--muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; }
-    .actions-row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
-    .open-panel { margin-top: 0.75rem; padding: 0.75rem; border: 1px dashed var(--border); border-radius: 8px; }
-    .open-panel label { display: block; margin: 0.35rem 0; font-size: 0.85rem; }
+    .tl-kind {
+      color: var(--muted);
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .actions-footer {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      min-height: var(--actions-h);
+      padding: 0.75rem 1.5rem;
+      border-top: 1px solid var(--border);
+      background: var(--bg-elevated);
+    }
+    .actions-label {
+      font-size: 0.6875rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .actions-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      justify-content: flex-end;
+    }
+    .open-drawer {
+      flex-shrink: 0;
+      background: var(--bg-elevated);
+    }
+    .open-panel:not([hidden]) {
+      margin: 0 1.5rem 1.25rem;
+      padding: 1rem;
+      border: 1px dashed var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+    .open-panel label { display: block; margin: 0.4rem 0; font-size: 0.85rem; }
+    .open-panel select {
+      width: 100%;
+      max-width: 280px;
+      margin-top: 0.25rem;
+      padding: 0.35rem 0.5rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font: inherit;
+    }
     .toast {
       position: fixed;
       bottom: 1rem;
@@ -122,7 +409,7 @@
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 6px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.35);
       font-size: 0.85rem;
       z-index: 100;
       opacity: 0;
@@ -130,18 +417,40 @@
     }
     .toast.show { opacity: 1; }
     .error-text { color: var(--err); }
-    .md-preview { white-space: pre-wrap; font-size: 0.85rem; line-height: 1.45; margin: 0; }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Picklejar Explorer</h1>
-    <button type="button" class="btn" id="refresh">Refresh</button>
+  <header class="app-header">
+    <div class="app-header__brand">
+      <h1>Picklejar Explorer</h1>
+      <div class="header-agent-chip" id="header-agent-chip" title="Agent recorded for this session">
+        <span class="header-agent-icon" aria-hidden="true">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </span>
+        <span id="header-agent">—</span>
+      </div>
+    </div>
+    <div class="app-header__toolbar">
+      <div class="theme-toggle-group" id="theme-toggle-group" role="group" aria-label="Theme">
+        <button type="button" class="theme-btn" data-theme-mode="dark" title="Dark" aria-label="Dark theme" aria-pressed="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
+        <button type="button" class="theme-btn" data-theme-mode="light" title="Light" aria-label="Light theme" aria-pressed="false">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 6.34L4.93 4.93M19.07 19.07l-1.41-1.41M6.34 17.66l-1.41 1.41M17.66 6.34l1.41-1.41"/></svg>
+        </button>
+      </div>
+      <span class="header-vdivider" aria-hidden="true"></span>
+      <button type="button" class="icon-btn" id="refresh" title="Refresh" aria-label="Refresh sessions">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      </button>
+    </div>
   </header>
   <div class="layout">
     <aside class="sidebar" id="sidebar"></aside>
-    <main class="main" id="main">
-      <p class="muted" id="placeholder">Select a session to view details.</p>
+    <main class="main-column" id="main">
+      <div class="detail-scroll">
+        <p class="muted placeholder" id="placeholder">Select a session to view details.</p>
+      </div>
     </main>
   </div>
   <div class="toast" id="toast" role="status"></div>
@@ -161,6 +470,51 @@
   let actionsCache = null;
 
   const $ = (id) => document.getElementById(id);
+  const THEME_KEY = 'picklejar-explorer-theme';
+
+  function setTheme(mode) {
+    const m = mode === 'light' ? 'light' : 'dark';
+    localStorage.setItem(THEME_KEY, m);
+    document.documentElement.dataset.theme = m;
+    document.querySelectorAll('.theme-btn').forEach((btn) => {
+      const on = btn.getAttribute('data-theme-mode') === m;
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  }
+
+  function resolveStoredTheme(stored) {
+    if (stored === 'light' || stored === 'dark') return stored;
+    if (stored === 'system') {
+      return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    }
+    return 'dark';
+  }
+
+  function initTheme() {
+    setTheme(resolveStoredTheme(localStorage.getItem(THEME_KEY)));
+    document.querySelectorAll('.theme-btn').forEach((btn) => {
+      btn.addEventListener('click', () => setTheme(btn.getAttribute('data-theme-mode')));
+    });
+  }
+
+  function updateHeaderAgent(vm) {
+    const el = $('header-agent');
+    if (!el) return;
+    let origin = null;
+    if (vm && vm.agentOrigin) origin = vm.agentOrigin;
+    else if (selectedId) {
+      const s = sessions.find((x) => x.sessionId === selectedId);
+      if (s && s.agentOrigin) origin = s.agentOrigin;
+    }
+    const label = origin && String(origin).trim() ? String(origin).trim() : '—';
+    el.textContent = label;
+    const chip = $('header-agent-chip');
+    if (chip) {
+      chip.title = label === '—'
+        ? 'Select a session to see which agent recorded it'
+        : 'Agent: ' + label;
+    }
+  }
 
   function toast(msg) {
     const el = $('toast');
@@ -207,6 +561,10 @@
     return c;
   }
 
+  function setMainPlaceholder(html) {
+    $('main').innerHTML = '<div class="detail-scroll">' + html + '</div>';
+  }
+
   async function loadSessions() {
     const r = await fetch('/api/sessions');
     if (!r.ok) throw new Error('Failed to load sessions');
@@ -214,7 +572,8 @@
     renderSidebar();
     if (selectedId && !sessions.some((s) => s.sessionId === selectedId)) {
       selectedId = null;
-      $('main').innerHTML = '<p class="muted" id="placeholder">Select a session.</p>';
+      setMainPlaceholder('<p class="muted placeholder" id="placeholder">Select a session.</p>');
+      updateHeaderAgent();
     }
   }
 
@@ -237,6 +596,7 @@
       btn.addEventListener('click', () => selectSession(s.sessionId));
       el.appendChild(btn);
     }
+    updateHeaderAgent();
   }
 
   function escapeAttr(s) {
@@ -251,7 +611,7 @@
     summaryCache = null;
     actionsCache = null;
     renderSidebar();
-    $('main').innerHTML = '<p>Loading…</p>';
+    setMainPlaceholder('<p class="placeholder">Loading…</p>');
 
     try {
       const [detailR, sumR, actR] = await Promise.all([
@@ -265,7 +625,7 @@
       actionsCache = await actR.json();
       renderDetail(detail);
     } catch (e) {
-      $('main').innerHTML = '<p class="error-text">Failed to load session.</p>';
+      setMainPlaceholder('<p class="error-text">Failed to load session.</p>');
       toast(String(e.message || e));
     }
   }
@@ -288,32 +648,56 @@
     }
 
     const openPanelId = 'open-panel';
-    $('main').innerHTML = `
-      <div class="panel">
-        <h2>Executive summary</h2>
-        <p><strong>Goal</strong><br>${escapeAttr(goal)}</p>
-        <p><strong>Status</strong> <span class="dot ${dotClass(vm.status)}"></span> ${escapeAttr(stLabel)}</p>
-        <p><strong>Updated</strong> ${relTime(vm.updatedAt)} (${formatTime(vm.updatedAt)})</p>
-        ${vm.lastPlannedAction ? `<p><strong>Next action</strong><br>${escapeAttr(vm.lastPlannedAction)}</p>` : ''}
-        ${vm.errorSummary ? `<p class="error-text"><strong>Error</strong><br>${escapeAttr(vm.errorSummary)}</p>` : ''}
-        ${(vm.decisions && vm.decisions.length) ? `<p><strong>Decisions</strong><br>${vm.decisions.map((d) => escapeAttr(d)).join('<br>')}</p>` : ''}
+
+    const execFields = `
+      <div class="detail-block">
+        <h2 class="section-kicker">Executive summary</h2>
+        <span class="field-label">Goal</span>
+        <p class="field-value">${escapeAttr(goal)}</p>
+        <span class="field-label">Status</span>
+        <p class="field-value status-row">
+          <span class="dot ${dotClass(vm.status)}"></span>
+          <span class="status-text">${escapeAttr(stLabel)}</span>
+        </p>
+        <span class="field-label">Updated</span>
+        <p class="field-value">Updated ${relTime(vm.updatedAt)} (${formatTime(vm.updatedAt)})</p>
+        ${vm.lastPlannedAction ? `
+        <span class="field-label">Next action</span>
+        <pre class="code-block" style="margin:0">${escapeAttr(vm.lastPlannedAction)}</pre>
+        ` : ''}
+        ${vm.errorSummary ? `
+        <span class="field-label">Error</span>
+        <p class="field-value error-text">${escapeAttr(vm.errorSummary)}</p>
+        ` : ''}
+        ${(vm.decisions && vm.decisions.length) ? `
+        <span class="field-label">Decisions</span>
+        <p class="field-value">${vm.decisions.map((d) => escapeAttr(d)).join('<br>')}</p>
+        ` : ''}
       </div>
-      <div class="panel">
-        <h2>Human summary</h2>
-        <pre class="md-preview">${escapeAttr(summaryCache.humanSummary || '')}</pre>
+      <div class="detail-block">
+        <h2 class="section-kicker">Human summary</h2>
+        <pre class="human-body">${escapeAttr(summaryCache.humanSummary || '')}</pre>
       </div>
-      <div class="panel">
-        <h2>Timeline</h2>
+      <div class="detail-block">
+        <h2 class="section-kicker">Timeline</h2>
         <div class="timeline">${timelineHtml || '<p class="muted">No actions.</p>'}</div>
       </div>
-      <div class="panel">
-        <h2>Actions</h2>
-        <div class="actions-row">
+    `;
+
+    $('main').innerHTML = `
+      <div class="detail-scroll">
+        ${execFields}
+      </div>
+      <footer class="actions-footer" id="actions-footer">
+        <span class="actions-label">Actions</span>
+        <div class="actions-buttons">
           <button type="button" class="btn btn-primary" id="copy-sum">Copy summary</button>
           <button type="button" class="btn btn-primary" id="copy-hand">Copy handoff</button>
-          <button type="button" class="btn" id="export-md">Export .md</button>
+          <button type="button" class="btn btn-outline" id="export-md">Export .md</button>
+          <button type="button" class="btn btn-outline" id="toggle-open">Open in agent</button>
         </div>
-        <button type="button" class="btn" id="toggle-open" style="margin-top:0.5rem">Open in agent ▾</button>
+      </footer>
+      <div class="open-drawer">
         <div class="open-panel" id="${openPanelId}" hidden>
           <label>Agent<br>
             <select id="sel-agent">${AGENTS.map((a) => '<option value="' + a + '">' + a + '</option>').join('')}</select>
@@ -374,12 +758,14 @@
         toast(String(e.message || e));
       }
     });
+    updateHeaderAgent(vm);
   }
 
   $('refresh').addEventListener('click', () => {
     loadSessions().then(() => toast('Refreshed')).catch((e) => toast(String(e.message || e)));
   });
 
+  initTheme();
   loadSessions().catch((e) => {
     $('sidebar').innerHTML = '<p class="error-text">' + escapeAttr(String(e.message || e)) + '</p>';
   });
