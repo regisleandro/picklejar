@@ -155,16 +155,24 @@ Persisted curation metadata is honored when present in stored actions. Picklejar
 
 ## Explorer UI
 
-`picklejar explore` starts a local HTTP UI for browsing sessions.
+`picklejar explore` starts a local HTTP UI for browsing sessions. It allows you to track your agent's ongoing work, inspect timeline logs, and review executive summaries dynamically.
 
-Features available in the Explorer:
+![Picklejar Explorer UI Demo](docs/assets/explorer-demo.webp)
 
-- list sessions and inspect session details
-- render human summary and handoff summary
-- inspect selectable actions for a session
-- copy the handoff markdown
-- export the handoff markdown
-- open the selected session directly in a target agent
+### Key Features
+
+- **List and Details**: Quickly see session statuses, actions count, and agent origins (`claude`, `cursor`, etc).
+- **Light/Dark Mode**: Built-in support for multiple color themes.
+- **Handoff Generation**: Render human and handoff summaries automatically.
+- **Launch Hooks**: Open the selected session directly in a target agent.
+
+#### Screenshots
+
+<p align="center">
+  <img src="docs/assets/explorer-list.png" width="48%" alt="Explorer Navigation" />
+  &nbsp;
+  <img src="docs/assets/explorer-light.png" width="48%" alt="Light Theme" />
+</p>
 
 Runtime behavior:
 
