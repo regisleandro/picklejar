@@ -32,6 +32,8 @@
   },
   "dependencies": {
     "commander": "^12.1.0",
+    "dompurify": "^3.3.3",
+    "marked": "^18.0.0",
     "msgpackr": "^1.11.2",
     "proper-lockfile": "^4.1.2"
   },

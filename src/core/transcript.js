@@ -22,14 +22,14 @@ export async function extractGoalFromTranscript(transcriptPath) {
           row?.content ??
           row?.text;
         if (typeof content === 'string' && content.trim().length > 0) {
-          return content.trim().slice(0, 300);
+          return content.trim().slice(0, 2_000);
         }
         if (Array.isArray(content)) {
           const joined = content
             .map((c) => (typeof c === 'string' ? c : c?.text ?? ''))
             .join(' ')
             .trim();
-          if (joined.length > 0) return joined.slice(0, 300);
+          if (joined.length > 0) return joined.slice(0, 2_000);
         }
       } catch {
         /* next line */

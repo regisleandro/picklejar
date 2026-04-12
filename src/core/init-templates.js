@@ -26,9 +26,11 @@ child.on('exit', (code, signal) => {
 
 /**
  * Uses CLAUDE_PROJECT_DIR so paths work in Claude Code.
+ * @param {string} [agentOrigin]
  */
-export function claudeHooksBlock() {
-  const run = `node $CLAUDE_PROJECT_DIR/.picklejar/hooks/run-hook.js`;
+export function claudeHooksBlock(agentOrigin = 'claude') {
+  const origin = JSON.stringify(agentOrigin);
+  const run = `PICKLEJAR_AGENT_ORIGIN=${origin} node $CLAUDE_PROJECT_DIR/.picklejar/hooks/run-hook.js`;
   return {
     SessionStart: [
       {

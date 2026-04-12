@@ -1,114 +1,119 @@
 # picklejar-agent
 
-Persist AI agent sessions using **native hooks**. Each tool use can be saved incrementally to `.picklejar/snapshots/`; on resume, a **Brain Dump** (Markdown) is injected via agent-specific adapters.
+Persist AI coding agent sessions with native hooks, versioned snapshots, and resumable handoff context.
 
-**Supported agents (see [docs/CAPABILITY_MATRIX.md](docs/CAPABILITY_MATRIX.md)):** Claude Code, Cursor, Continue CLI, GitHub Copilot CLI, Cline (hooks track); OpenCode, Kilo, Antigravity, Aider (instructions / session track). **OpenAI Codex is out of scope** for this roadmap.
+Picklejar records tool activity under `.picklejar/snapshots/`, derives a trusted session view, and can generate a brain dump for resume, export, terminal handoff, or the local Explorer UI.
+
+Supported agents are split into two tracks:
+
+- Hooks track: Claude Code, Cursor, Continue CLI, GitHub Copilot CLI, Cline
+- Instructions track: OpenCode, Kilo, Antigravity, Aider
+
+Details by agent live in [docs/CAPABILITY_MATRIX.md](docs/CAPABILITY_MATRIX.md).
 
 ## Requirements
 
-- Node.js **20+**
-- The agent you use (Claude Code, Cursor, `cn`, Copilot CLI, etc.)
+- Node.js `20+`
+- The target agent CLI or IDE integration installed when you use `picklejar start` or `picklejar open`
 
 ## Install
 
 ```bash
 npm install -g picklejar-agent
-# or in your repo:
+# or
 npm install --save-dev picklejar-agent
 ```
 
-## Quick start
+## Quick Start
 
 ```bash
-# Default: Claude Code (.claude/settings.json)
+# default: Claude Code
 picklejar init
 
-# Or pick an agent
+# explicit agent
 picklejar init cursor
+picklejar init continue
 picklejar init copilot
 picklejar init cline
-picklejar init continue
 
-# Legacy: init only a path (same as: picklejar init claude <path>)
+# legacy form: path only = picklejar init claude <path>
 picklejar init /path/to/project
 ```
 
-This creates `.picklejar/` (config, `hooks/run-hook.js`, snapshots, transcripts) and registers hooks for the chosen integration.
+`picklejar init` creates the shared runtime layout and installs the integration for the selected agent.
 
-## Capabilities overview
+Generated runtime files include:
 
-```bash
-picklejar capabilities
-picklejar capabilities cursor
-```
+- `.picklejar/config.json`
+- `.picklejar/hooks/run-hook.js`
+- `.picklejar/snapshots/`
+- `.picklejar/transcripts/`
+- `.picklejar/resume-context.md`
+- `.picklejar/force-resume.json`
 
-## Resuming a session
+It also appends the relevant `.gitignore` entries for snapshots, transcript backups, the lockfile, and force-resume artifacts.
 
-```bash
-picklejar resume [sessionId]
-picklejar start claude    # or: cursor, cn, opencode, kilo, aider, …
-```
+## What Picklejar Captures
 
-- **Hooks-track agents** (Claude, Cursor, Continue, Copilot CLI, Cline): hooks call `run-hook.js`, which runs the packaged scripts under `src/hooks/`.
-- **Instructions-track** (OpenCode, Kilo, Antigravity, Aider): `picklejar start` injects the brain dump into `AGENTS.md`, `CONVENTIONS.md`, or `.agent/picklejar-resume.md` as appropriate, in addition to `CLAUDE.md` when useful for compatibility.
+At runtime, Picklejar can capture:
 
-> **Claude Code nuance:** `additionalContext` on `SessionStart` is not applied for brand-new `startup` sessions; writing to `CLAUDE.md` before `picklejar start claude` remains the reliable path. Other products differ — see the matrix doc.
+- per-tool actions with normalized payloads from multiple agents
+- session starts and resumes
+- pre-compact checkpoints
+- stop/end state
+- active file snapshots, decisions, and task/progress state
+- transcript-derived goal and last planned action when available
 
-## CLI
+Snapshots are stored as msgpack payloads with CRC32 validation and a lockfile-backed write path.
 
-| Command | Description |
-|--------|-------------|
-| `picklejar init [agent] [dir]` | Set up `.picklejar` + hooks for `agent` (default `claude`) |
-| `picklejar capabilities [agent]` | JSON summary of integration track / notes |
-| `picklejar status [dir]` | Latest snapshot summary |
-| `picklejar list [dir] [--verbose] [--sections]` | List snapshot files, optionally with derived session details |
-| `picklejar inspect <id> [dir]` | Pretty-print session JSON |
-| `picklejar actions <id> [dir]` | List recorded actions with curation metadata |
-| `picklejar export <id> [dir] [-o file.md] [filters...]` | Write brain dump markdown |
-| `picklejar resume [id] [dir] [filters...]` | Write `resume-context.md` + `force-resume.json` |
-| `picklejar start [agent] [dir]` | Inject resume context and launch the agent CLI when available |
-| `picklejar curate <subcommand> ...` | Persist curation metadata (`exclude`, `include`, `tag`, `note`, `reset`, `review`, `suggest`, `confirm`, `approve-unsuggested`, `exclude-suggested`, `apply-suggestions`, `stats`) |
-| `picklejar goal <text> [dir]` | Set goal on latest session |
-| `picklejar decide <desc> <reason> [dir]` | Record architecture decision |
-| `picklejar clean [--keep N] [dir]` | Prune old snapshots per session |
+## Core Flow
 
-Examples:
+1. Hooks call `.picklejar/hooks/run-hook.js`.
+2. Picklejar normalizes the payload and saves an updated session snapshot.
+3. `picklejar resume`, `picklejar export`, or `picklejar open` compiles a brain dump from the latest trusted session state.
+4. `picklejar start` or `picklejar open --agent ...` injects that resume context into the target agent’s instruction file and launches the agent when supported.
 
-```bash
-picklejar list
-picklejar list --verbose
-picklejar list --verbose --sections
-```
+## CLI Overview
 
-- `--verbose` switches to a compact summary view with timestamp, derived title, action count, and ended status, without the snapshot file path column.
-- `--sections` adds a compact list of detected content areas present in the snapshot, such as `goal`, `progress`, `active files`, and `recent actions`.
+| Command | Purpose |
+|--------|---------|
+| `picklejar init [agent] [dir]` | Install Picklejar runtime files and agent integration |
+| `picklejar capabilities [agent]` | Print JSON capabilities for one agent or all agents |
+| `picklejar status [dir]` | Show the latest session summary |
+| `picklejar list [dir]` | List sessions with full session ID, 80-char title column, status, recency, and action count |
+| `picklejar list --verbose` | Expand each session with files, next action, and error |
+| `picklejar list --json` | Emit `listSessions()` JSON |
+| `picklejar list --sections` | Legacy per-snapshot listing with detected sections |
+| `picklejar actions <id> [dir]` | List recorded actions for a session |
+| `picklejar inspect <id> [dir]` | Print the full stored session JSON |
+| `picklejar export <id> [dir]` | Write a brain dump markdown file |
+| `picklejar resume [id] [dir]` | Write `resume-context.md` and `force-resume.json` |
+| `picklejar open <id> [dir] --agent <agent>` | Prepare context and launch an agent in one step |
+| `picklejar start [agent] [dir]` | Inject existing resume context and launch the agent |
+| `picklejar goal <text> [dir]` | Set the latest session goal |
+| `picklejar decide <description> <reasoning> [dir]` | Append an architecture decision |
+| `picklejar clean [dir] --keep <n>` | Prune old snapshots per session |
+| `picklejar explore [dir]` | Start the local Explorer UI |
 
-## Configuration
+Detailed command help and examples live in [docs/CLI_REFERENCE.md](docs/CLI_REFERENCE.md).
 
-`.picklejar/config.json`:
+## Resume, Export, And Handoff
 
-- `maxTokens` — brain dump budget (default `30000`)
-- `redactPatterns` — regex sources applied to tool output before persistence
+The generated brain dump can include:
 
-## Filtering export and resume output
+- original user intent
+- current trusted state
+- next planned action
+- interruption/error state
+- progress/task tree
+- architecture decisions
+- active file snapshots
+- recent trusted actions
+- trusted history
+- optional discarded paths
+- resume instructions
 
-`picklejar export` and `picklejar resume` can exclude sections from the generated brain dump without changing the stored snapshot.
-
-Examples:
-
-```bash
-picklejar export session-123 --without-active-files --without-history
-picklejar resume session-123 --without-recent-actions --without-instructions
-picklejar export session-123 --exclude-actions 1,3,8
-picklejar resume session-123 --interactive-actions
-picklejar export session-123 --list-actions
-picklejar resume session-123 --ignore-curation
-picklejar export session-123 --with-discarded-paths
-picklejar resume session-123 --profile strict
-picklejar export session-123 --profile audit
-```
-
-Available section filters:
+`picklejar export`, `picklejar resume`, and `picklejar open` share the same filtering flags:
 
 - `--without-goal`
 - `--without-next-action`
@@ -119,75 +124,83 @@ Available section filters:
 - `--without-recent-actions`
 - `--without-history`
 - `--without-instructions`
-- `--with-discarded-paths`
+- `--exclude-actions 1,2,3`
+- `--interactive-actions`
+- `--ignore-curation`
 - `--profile balanced|strict|audit|recovery`
+- `--with-discarded-paths`
+- `--list-actions`
 
-Action filtering details:
+Profile behavior:
 
-- `--list-actions` prints all recorded actions with stable 1-based indexes.
-- `--exclude-actions 2,4,9` removes specific actions from `RECENT TRUSTED ACTIONS` and `TRUSTED HISTORY` in the generated summary.
-- `--interactive-actions` opens a keyboard selector in TTY terminals (`up/down`, `space`, `a`, `n`, `enter`, `q`) and falls back to the prompt-based index input outside TTY.
-- persisted curation is applied by default; use `--ignore-curation` to include all recorded actions again.
-- `--profile balanced` keeps trusted/default work and excludes curated bad paths.
-- `--profile strict` includes only `confirmed` actions.
-- `--profile audit` includes everything and enables `DISCARDED PATHS`.
-- `--profile recovery` keeps `confirmed`, `default`, and `dead_end`, but excludes `hallucinated` and `inconsistent`.
-- Filtering only affects the generated markdown; the underlying snapshot remains unchanged.
+- `balanced`: keeps default and confirmed work, excludes discarded/bad paths
+- `strict`: keeps only `confirmed`
+- `audit`: keeps everything and enables `DISCARDED PATHS`
+- `recovery`: excludes `hallucinated` and `inconsistent`, keeps `dead_end`
 
-## Curating a session
+Persisted curation metadata is honored when present in stored actions. Picklejar still exposes that metadata in `picklejar actions`, but the CLI no longer exposes a `curate` command.
 
-Use curation when a session contains false starts, inconsistent tool output, or agent hallucinations that should not be handed off to the next agent.
+## Explorer UI
 
-Examples:
+`picklejar explore` starts a local HTTP UI for browsing sessions.
 
-```bash
-picklejar actions session-123
-picklejar curate exclude session-123 5,6
-picklejar curate tag session-123 7 hallucinated
-picklejar curate note session-123 7 "assumed a file that does not exist"
-picklejar curate review session-123
-picklejar curate suggest session-123
-picklejar curate approve-unsuggested session-123
-picklejar curate exclude-suggested session-123
-picklejar curate stats session-123
+Features available in the Explorer:
+
+- list sessions and inspect session details
+- render human summary and handoff summary
+- inspect selectable actions for a session
+- copy the handoff markdown
+- export the handoff markdown
+- open the selected session directly in a target agent
+
+Runtime behavior:
+
+- local mode binds to `127.0.0.1` on a random port and opens a browser automatically
+- remote mode uses `--remote`, binds to `0.0.0.0`, does not auto-open a browser, and prints the Explorer token
+- Explorer requests are protected by an ephemeral token in local handoff mode
+
+## Configuration
+
+Default `.picklejar/config.json` values:
+
+```json
+{
+  "maxTokens": 30000,
+  "redactPatterns": [
+    "sk-[A-Za-z0-9]{20,}",
+    "Bearer\\s+[A-Za-z0-9._-]+",
+    "api[_-]?key[\"']?\\s*[:=]\\s*[\"'][^\"']+[\"']"
+  ]
+}
 ```
 
-Curation status semantics:
+`redactPatterns` are applied before tool output is persisted.
 
-- `confirmed` means the action is trusted and should be favored when the dump is trimmed.
-- `discarded` means the action should stay in the audit trail but stay out of the handoff context.
-- `hallucinated` means the agent invented or assumed something invalid.
-- `inconsistent` means the action produced contradictory or clearly failing output.
-- `dead_end` means the action reflects an abandoned path or reverted attempt.
-- `reset` clears all persisted curation metadata for the selected actions.
+## Agent Launch Semantics
 
-Batch workflows:
+- `picklejar start <agent>` launches from the current project after injecting the existing resume context if present.
+- `picklejar open <id> --agent <agent>` prepares fresh resume artifacts for the selected session and then launches the target agent.
+- IDE-only integrations such as Cline and Antigravity cannot be detached from the Explorer handoff flow and instead print guidance.
 
-- `confirm` marks selected actions as trusted and always includable.
-- `approve-unsuggested` confirms all unreviewed actions that were not flagged by heuristics.
-- `exclude-suggested` applies heuristic warnings and excludes those actions from handoff.
-- `apply-suggestions` applies heuristic statuses without extra manual indexing.
-- `stats` prints totals, included/excluded counts, heuristic suggestion count, and per-status counts.
-- `review --scope suggested|unreviewed|all` narrows the interactive review queue.
+Resume context is injected into these files depending on the target:
 
-The generated brain dump now emphasizes:
+- `CLAUDE.md` for Claude-compatible flows
+- `AGENTS.md` for OpenCode, Kilo, Copilot, and some compatibility paths
+- `.agent/picklejar-resume.md` for Antigravity
+- `CONVENTIONS.md` for Aider
 
-- original user intent
-- current trusted state
-- active files retained after curation
-- recent trusted actions
-- trusted history
-- optional discarded paths for auditability
+## Examples
 
-## How it works (core)
-
-1. **PostToolUse** (and equivalents) — normalize payloads from Claude, Cursor, Cline, etc., then record actions and snapshot.
-2. **Stop** — checkpoint + `lastPlannedAction` from transcript when possible.
-3. **PreCompact** — safety snapshot + transcript backup under `.picklejar/transcripts/`.
-4. **SessionEnd** — marks session ended.
-5. **SessionStart** / **TaskStart** / **TaskResume** — resume injection + cleanup of injected markdown when `force-resume.json` is present.
-
-Snapshots use **msgpack** + **CRC32** with fallback to the previous file if the latest is corrupt.
+```bash
+picklejar list
+picklejar list --verbose
+picklejar actions session-123
+picklejar export session-123 --profile audit --with-discarded-paths
+picklejar resume session-123 --exclude-actions 2,5
+picklejar open session-123 --agent claude
+picklejar start continue
+picklejar explore
+```
 
 ## Development
 
@@ -195,7 +208,7 @@ Snapshots use **msgpack** + **CRC32** with fallback to the previous file if the 
 git clone <repo> && cd picklejar
 npm install
 npm test
-node src/cli.js init cursor /path/to/project
+node src/cli.js --help
 ```
 
 ## License

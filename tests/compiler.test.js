@@ -21,6 +21,21 @@ describe('compiler', () => {
     expect(md).toContain('CURRENT TRUSTED STATE');
     expect(md).toContain('RECENT TRUSTED ACTIONS');
     expect(md).toContain('[PICKLEJAR RESUME]');
+    expect(md).toContain('# [PICKLEJAR RESUME] Test goal');
+    expect(md).toContain('> Session: c1');
+  });
+
+  it('brain dump H1 uses cleaned title but USER ORIGINAL INTENT keeps raw wrapped goal', () => {
+    const rawGoal = '<user_query>\nShip JWT auth.\n</user_query>';
+    const s = createSession('c-wrap', '/tmp/p');
+    s.goal = rawGoal;
+    const md = compileBrainDump(s, { maxTokens: 50_000 });
+    expect(md).toContain('# [PICKLEJAR RESUME] Ship JWT auth.');
+    expect(md).toContain('> Session: c-wrap');
+    expect(md).toContain('## USER ORIGINAL INTENT');
+    const intentIdx = md.indexOf('## USER ORIGINAL INTENT');
+    const afterIntent = md.slice(intentIdx);
+    expect(afterIntent).toContain(rawGoal);
   });
 
   it('does not produce [object Object] when output/input are objects', () => {

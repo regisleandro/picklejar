@@ -1,0 +1,1128 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Picklejar Explorer</title>
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <style>
+    html[data-theme="dark"] {
+      --bg: #0d0d0f;
+      --bg-elevated: #111113;
+      --surface: #18181c;
+      --surface-hover: #1e1e24;
+      --surface-card: #1a1a1f;
+      --border: #2a2a34;
+      --border-subtle: #222228;
+      --text: #f0f0f2;
+      --muted: #7a7a88;
+      --muted-2: #555565;
+      --accent: #4f8ef7;
+      --accent-hover: #6ea3f9;
+      --ok: #22c55e;
+      --ok-bg: rgba(34,197,94,0.12);
+      --ended: #a855f7;
+      --err: #ef4444;
+      --code-bg: #0f0f13;
+      --shadow: 0 1px 3px rgba(0,0,0,0.4), 0 4px 16px rgba(0,0,0,0.25);
+    }
+    html[data-theme="light"] {
+      --bg: #f2f2f4;
+      --bg-elevated: #ffffff;
+      --surface: #ffffff;
+      --surface-hover: #f8f8fb;
+      --surface-card: #ffffff;
+      --border: #e2e2ea;
+      --border-subtle: #eeeef4;
+      --text: #18181b;
+      --muted: #71717a;
+      --muted-2: #a1a1aa;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --ok: #16a34a;
+      --ok-bg: rgba(22,163,74,0.1);
+      --ended: #9333ea;
+      --err: #dc2626;
+      --code-bg: #f6f6f9;
+      --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.06);
+    }
+    :root {
+      --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --mono: ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace;
+      --header-h: 52px;
+      --actions-h: 60px;
+      --sidebar-w: 260px;
+      --radius-sm: 6px;
+      --radius: 10px;
+      --radius-lg: 12px;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .app-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      gap: 1rem;
+      height: var(--header-h);
+      padding: 0 1rem 0 1.25rem;
+      border-bottom: 1px solid var(--border-subtle);
+      background: var(--bg-elevated);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .app-header__brand {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .app-header__brand-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+    .app-header__brand-icon img {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    .app-header h1 {
+      margin: 0;
+      font-size: 0.9375rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+    .app-header__toolbar {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .header-vdivider {
+      width: 1px;
+      height: 24px;
+      background: var(--border);
+      flex-shrink: 0;
+      margin: 0 0.125rem;
+    }
+    .theme-toggle-group {
+      display: inline-flex;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      overflow: hidden;
+      background: var(--bg);
+    }
+    .theme-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      border: none;
+      border-right: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      transition: color 0.15s, background 0.15s;
+    }
+    .theme-btn:last-child { border-right: none; }
+    .theme-btn:hover { color: var(--text); background: var(--surface-hover); }
+    .theme-btn[aria-pressed="true"] { color: var(--accent); background: var(--surface); }
+    .theme-btn svg { display: block; }
+    .icon-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--muted);
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s, background 0.15s;
+    }
+    .icon-btn:hover { color: var(--text); border-color: var(--border); background: var(--surface-hover); }
+    .icon-btn svg { display: block; }
+
+    .layout {
+      display: grid;
+      grid-template-columns: var(--sidebar-w) 1fr;
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+    }
+    @media (max-width: 768px) {
+      .layout { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+      .sidebar {
+        max-height: 42vh;
+        box-shadow: none;
+      }
+      .sidebar::after {
+        top: auto;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 1px;
+        background: linear-gradient(
+          to right,
+          transparent 0%,
+          var(--border-subtle) 8%,
+          var(--border-subtle) 92%,
+          transparent 100%
+        );
+      }
+    }
+
+    .sidebar {
+      background: var(--bg-elevated);
+      border-right: none;
+      box-shadow: 1px 0 0 0 var(--border-subtle);
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 0.5rem 0;
+      position: relative;
+    }
+    .sidebar::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 1px;
+      height: 100%;
+      background: linear-gradient(
+        to bottom,
+        transparent 0%,
+        var(--border-subtle) 8%,
+        var(--border-subtle) 92%,
+        transparent 100%
+      );
+      pointer-events: none;
+    }
+    .sidebar-group-label {
+      padding: 0.875rem 0.875rem 0.375rem;
+      font-size: 0.6875rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted-2);
+    }
+    .card {
+      position: relative;
+      display: block;
+      width: 100%;
+      padding: 0.625rem 0.875rem;
+      margin: 0;
+      border: none;
+      border-radius: 0;
+      background: transparent;
+      color: var(--text);
+      font: inherit;
+      cursor: pointer;
+      text-align: left;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      transition: background 0.1s ease;
+    }
+    .card:hover { background: var(--surface-hover); }
+    .card.selected { background: var(--surface-card); }
+    .card.selected::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 4px;
+      bottom: 4px;
+      width: 3px;
+      border-radius: 0 2px 2px 0;
+      background: var(--accent);
+    }
+    .card-title {
+      font-size: 0.8125rem;
+      font-weight: 500;
+      line-height: 1.4;
+      margin: 0 0 0.25rem;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .card-meta {
+      font-size: 0.6875rem;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+    .card-meta-row {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      flex-wrap: wrap;
+    }
+    .card-dot {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .dot-active { background: var(--ok); }
+    .dot-ended { background: var(--ended); }
+    .dot-error { background: var(--err); }
+    .agent-badge {
+      display: inline-block;
+      font-size: 0.625rem;
+      font-weight: 600;
+      line-height: 1;
+      padding: 0.18em 0.5em;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      white-space: nowrap;
+      letter-spacing: 0.01em;
+      text-transform: lowercase;
+    }
+    .card-error-text {
+      font-size: 0.6875rem;
+      color: var(--err);
+      margin-top: 0.2rem;
+    }
+
+    .main-column {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      min-width: 0;
+      background: var(--bg);
+      overflow: hidden;
+    }
+    .main-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1.5rem;
+      padding-bottom: 0;
+    }
+    .main-heading {
+      font-size: 1.0625rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin: 0 0 1rem;
+    }
+    .cards-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 0.875rem;
+      padding-bottom: 1.5rem;
+    }
+
+    .info-card {
+      background: var(--surface-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+    .info-card-header {
+      padding: 0.875rem 1.125rem 0;
+      font-size: 0.6875rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .info-card-body {
+      padding: 0.75rem 1.125rem 1rem;
+    }
+
+    .field-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.875rem;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .field-row:last-child { border-bottom: none; padding-bottom: 0; }
+    .field-row:first-child { padding-top: 0; }
+    .field-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      margin-top: 0.1rem;
+    }
+    .field-icon-ok { background: var(--ok-bg); color: var(--ok); }
+    .field-icon-info { color: var(--muted); }
+    .field-icon-clock { color: var(--muted); }
+    .field-icon-next { color: var(--accent); }
+    .field-icon-err { color: var(--err); }
+    .field-label-col {
+      flex: 0 0 100px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--muted);
+      line-height: 1.5;
+      padding-top: 0.1rem;
+    }
+    .field-value-col {
+      flex: 1;
+      min-width: 0;
+      font-size: 0.8125rem;
+      line-height: 1.5;
+    }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.75rem;
+      font-weight: 500;
+      text-transform: lowercase;
+    }
+    .status-dot {
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .timeline {
+      border-left: 2px solid var(--border);
+      margin-left: 6px;
+      padding-left: 1rem;
+    }
+    .tl-item {
+      position: relative;
+      margin-bottom: 0.6rem;
+      font-size: 0.7875rem;
+      line-height: 1.4;
+      color: var(--text);
+    }
+    .tl-item::before {
+      content: '';
+      position: absolute;
+      left: -1rem;
+      top: 0.35rem;
+      width: 7px;
+      height: 7px;
+      margin-left: -4px;
+      border-radius: 50%;
+      background: var(--muted-2);
+    }
+    .tl-item.tl-ok::before { background: var(--ok); }
+    .tl-item.tl-bad::before { background: var(--err); }
+    .tl-item.tl-muted { opacity: 0.45; }
+    .tl-kind {
+      color: var(--muted);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .markdown-body { font-size: 0.8125rem; line-height: 1.65; }
+    .markdown-body p { margin-top: 0; margin-bottom: 0.875rem; }
+    .markdown-body p:last-child { margin-bottom: 0; }
+    .markdown-body pre { background: var(--code-bg); padding: 0.875rem; border-radius: 8px; border: 1px solid var(--border); overflow-x: auto; font-family: var(--mono); font-size: 0.75rem; margin: 0 0 0.875rem; }
+    .markdown-body code { font-family: var(--mono); background: var(--code-bg); padding: 0.15em 0.35em; border-radius: 4px; font-size: 0.8125em; border: 1px solid var(--border); }
+    .markdown-body pre code { background: transparent; padding: 0; border: none; }
+    .markdown-body ul, .markdown-body ol { margin-top: 0; margin-bottom: 0.875rem; padding-left: 1.35rem; }
+    .markdown-body li { margin-bottom: 0.2rem; }
+    .markdown-body strong { font-weight: 600; }
+    .markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 { font-weight: 600; margin-top: 1.25rem; margin-bottom: 0.625rem; }
+
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 6rem 2rem;
+      color: var(--muted);
+    }
+    .empty-state-icon {
+      width: 48px;
+      height: 48px;
+      margin-bottom: 1rem;
+      opacity: 0.35;
+    }
+    .empty-state p { margin: 0; font-size: 0.9rem; }
+
+    .btn {
+      font: inherit;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.4rem 0.85rem;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      transition: background 0.12s, border-color 0.12s, color 0.12s;
+      white-space: nowrap;
+    }
+    .btn:hover { background: var(--surface-hover); }
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: #fff; }
+    .btn-ghost {
+      background: transparent;
+      border-color: transparent;
+      color: var(--muted);
+    }
+    .btn-ghost:hover { background: var(--surface-hover); color: var(--text); border-color: transparent; }
+
+    .actions-footer {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      min-height: var(--actions-h);
+      padding: 0.75rem 1.5rem;
+      border-top: 1px solid var(--border-subtle);
+      background: var(--bg-elevated);
+    }
+    .actions-label {
+      font-size: 0.6875rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted-2);
+      flex-shrink: 0;
+    }
+    .actions-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      justify-content: flex-end;
+    }
+
+    .open-drawer {
+      background: var(--bg-elevated);
+      border-top: 1px solid var(--border-subtle);
+    }
+    .open-panel:not([hidden]) {
+      margin: 0;
+      padding: 1rem 1.5rem;
+    }
+    .open-panel-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem 1.5rem;
+      margin-bottom: 0.75rem;
+    }
+    .open-panel label {
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--muted);
+    }
+    .open-panel select {
+      padding: 0.35rem 0.6rem;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font: inherit;
+      font-size: 0.8125rem;
+      min-width: 150px;
+    }
+    .exclude-options {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem 0.75rem;
+    }
+    .exclude-options label {
+      flex-direction: row;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .open-panel-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 0.5rem;
+      margin-top: 0.625rem;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 1.25rem;
+      right: 1.25rem;
+      padding: 0.5rem 0.875rem;
+      background: var(--surface-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      font-size: 0.8125rem;
+      z-index: 100;
+      opacity: 0;
+      transform: translateY(6px);
+      transition: opacity 0.2s, transform 0.2s;
+      pointer-events: none;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .error-text { color: var(--err); }
+    .muted { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <div class="app-header__brand">
+      <div class="app-header__brand-icon" aria-hidden="true">
+        <img src="/picklejar.ico" alt="">
+      </div>
+      <h1>Picklejar Explorer</h1>
+    </div>
+    <div class="app-header__toolbar">
+      <div class="theme-toggle-group" id="theme-toggle-group" role="group" aria-label="Theme">
+        <button type="button" class="theme-btn" data-theme-mode="dark" title="Dark" aria-label="Dark theme" aria-pressed="true">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
+        <button type="button" class="theme-btn" data-theme-mode="light" title="Light" aria-label="Light theme" aria-pressed="false">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 6.34L4.93 4.93M19.07 19.07l-1.41-1.41M6.34 17.66l-1.41 1.41M17.66 6.34l1.41-1.41"/></svg>
+        </button>
+      </div>
+      <span class="header-vdivider" aria-hidden="true"></span>
+      <button type="button" class="icon-btn" id="refresh" title="Refresh" aria-label="Refresh sessions">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      </button>
+    </div>
+  </header>
+  <div class="layout">
+    <aside class="sidebar" id="sidebar"></aside>
+    <main class="main-column" id="main">
+      <div class="main-scroll">
+        <div class="empty-state">
+          <svg class="empty-state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.25"><rect x="3" y="3" width="18" height="18" rx="3"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="9" x2="21" y2="9" opacity="0.4"/><line x1="15" y1="13" x2="20" y2="13" opacity="0.4"/><line x1="15" y1="17" x2="18" y2="17" opacity="0.4"/></svg>
+          <p id="placeholder">Select a session to view details.</p>
+        </div>
+      </div>
+    </main>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="/vendor/marked.js"></script>
+  <script src="/vendor/dompurify.js"></script>
+  <script>
+(function () {
+  const BOOTSTRAP = window.__PICKLEJAR_EXPLORER__ || {};
+  const DEFAULT_AGENTS = ['claude', 'cursor', 'opencode', 'cline', 'aider'];
+  const AGENTS = Array.isArray(BOOTSTRAP.agents) && BOOTSTRAP.agents.length ? BOOTSTRAP.agents : DEFAULT_AGENTS;
+  const PROFILES = ['balanced', 'strict', 'audit', 'recovery'];
+  const EXCLUDE_OPTS = [
+    { value: 'history', label: 'History' },
+    { value: 'instructions', label: 'Instructions' },
+    { value: 'discarded paths', label: 'Discarded paths' },
+  ];
+  const EXPLORER_TOKEN = typeof BOOTSTRAP.token === 'string' ? BOOTSTRAP.token : '';
+  const HEARTBEAT_MS = Number(BOOTSTRAP.heartbeatMs) > 0 ? Number(BOOTSTRAP.heartbeatMs) : 15000;
+  const EPHEMERAL = Boolean(BOOTSTRAP.ephemeral && EXPLORER_TOKEN);
+
+  let sessions = [];
+  let selectedId = null;
+  let summaryCache = null;
+  let actionsCache = null;
+  let heartbeatTimer = null;
+  let explorerClosed = false;
+
+  const $ = (id) => document.getElementById(id);
+  const THEME_KEY = 'picklejar-explorer-theme';
+  const CLIENT_ID = (() => {
+    if (!EPHEMERAL) return '';
+    const key = 'picklejar-explorer-client-id';
+    try {
+      let value = sessionStorage.getItem(key);
+      if (!value) {
+        value =
+          (window.crypto && typeof window.crypto.randomUUID === 'function')
+            ? window.crypto.randomUUID()
+            : 'client-' + Date.now() + '-' + Math.random().toString(16).slice(2);
+        sessionStorage.setItem(key, value);
+      }
+      return value;
+    } catch {
+      return 'client-' + Date.now() + '-' + Math.random().toString(16).slice(2);
+    }
+  })();
+
+  function setTheme(mode) {
+    const m = mode === 'light' ? 'light' : 'dark';
+    localStorage.setItem(THEME_KEY, m);
+    document.documentElement.dataset.theme = m;
+    document.querySelectorAll('.theme-btn').forEach((btn) => {
+      btn.setAttribute('aria-pressed', btn.getAttribute('data-theme-mode') === m ? 'true' : 'false');
+    });
+  }
+  function initTheme() {
+    const stored = localStorage.getItem(THEME_KEY);
+    const mode = (stored === 'light' || stored === 'dark') ? stored : 'dark';
+    setTheme(mode);
+    document.querySelectorAll('.theme-btn').forEach((btn) => {
+      btn.addEventListener('click', () => setTheme(btn.getAttribute('data-theme-mode')));
+    });
+  }
+
+  function toast(msg) {
+    const el = $('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), 2800);
+  }
+
+  function formatTime(ts) {
+    return new Date(ts).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  }
+  function relTime(ts) {
+    const s = Math.floor((Date.now() - ts) / 1000);
+    if (s < 60) return s + ' sec ago';
+    const m = Math.floor(s / 60);
+    if (m < 60) return m + ' min ago';
+    const h = Math.floor(m / 60);
+    if (h < 48) return h + ' hr ago';
+    const days = Math.floor(h / 24);
+    return days + ' day' + (days === 1 ? '' : 's') + ' ago';
+  }
+  function dayKey(ts) {
+    const d = new Date(ts);
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    if (d.toDateString() === today.toDateString()) return 'Today';
+    if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+    const weekAgo = new Date(today);
+    weekAgo.setDate(today.getDate() - 7);
+    if (d >= weekAgo) return 'This Week';
+    const monthAgo = new Date(today);
+    monthAgo.setDate(today.getDate() - 30);
+    if (d >= monthAgo) return 'This Month';
+    return 'Older';
+  }
+
+  function dotClass(status) {
+    if (status === 'ended') return 'dot-ended';
+    if (status === 'error') return 'dot-error';
+    return 'dot-active';
+  }
+  function actionKind(toolName) {
+    const t = String(toolName || '').toLowerCase();
+    if (t.includes('user')) return 'request';
+    if (t.includes('read')) return 'read';
+    if (/edit|write|patch|apply|str_replace|multiedit/.test(t)) return 'edit';
+    return 'command';
+  }
+  function tlClasses(row) {
+    let c = 'tl-item';
+    if (row.curationStatus === 'confirmed') c += ' tl-ok';
+    else if (['discarded', 'hallucinated', 'inconsistent'].includes(row.curationStatus)) c += ' tl-bad';
+    if (row.includeInBrainDump === false) c += ' tl-muted';
+    return c;
+  }
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+  function renderMd(text) {
+    if (!text) return '';
+    try {
+      const dirty = marked.parse(text);
+      return DOMPurify.sanitize(dirty);
+    } catch {
+      return escapeHtml(text);
+    }
+  }
+
+  async function apiFetch(url, init) {
+    const options = init ? { ...init } : {};
+    const headers = new Headers(options.headers || {});
+    if (EXPLORER_TOKEN) {
+      headers.set('x-picklejar-explorer-token', EXPLORER_TOKEN);
+    }
+    options.headers = headers;
+    return fetch(url, options);
+  }
+
+  async function sendHeartbeat() {
+    if (!EPHEMERAL || explorerClosed) return;
+    try {
+      await apiFetch('/api/explorer/heartbeat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId: CLIENT_ID }),
+      });
+    } catch {
+      /* ignore ephemeral heartbeat failures */
+    }
+  }
+
+  function startHeartbeat() {
+    if (!EPHEMERAL || heartbeatTimer) return;
+    void sendHeartbeat();
+    heartbeatTimer = window.setInterval(() => {
+      void sendHeartbeat();
+    }, HEARTBEAT_MS);
+  }
+
+  function closeExplorer(reason) {
+    if (!EPHEMERAL || explorerClosed) return;
+    explorerClosed = true;
+    if (heartbeatTimer) {
+      window.clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
+    }
+    const url = '/api/explorer/close?token=' + encodeURIComponent(EXPLORER_TOKEN);
+    const body = JSON.stringify({ clientId: CLIENT_ID, reason });
+    try {
+      if (navigator.sendBeacon && navigator.sendBeacon(url, body)) {
+        return;
+      }
+    } catch {
+      /* fall through to fetch keepalive */
+    }
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+      keepalive: true,
+    }).catch(() => {});
+  }
+
+  function setMainContent(html) {
+    $('main').innerHTML = '<div class="main-scroll">' + html + '</div>';
+  }
+
+  async function loadSessions() {
+    const r = await apiFetch('/api/sessions');
+    if (!r.ok) throw new Error('Failed to load sessions');
+    sessions = await r.json();
+    renderSidebar();
+    if (selectedId && !sessions.some((s) => s.sessionId === selectedId)) {
+      selectedId = null;
+      setMainContent(`
+        <div class="empty-state">
+          <svg class="empty-state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.25"><rect x="3" y="3" width="18" height="18" rx="3"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+          <p>Select a session.</p>
+        </div>
+      `);
+    }
+  }
+
+  function renderSidebar() {
+    const el = $('sidebar');
+    el.innerHTML = '';
+
+    const groups = {};
+    const ORDER = ['Today', 'Yesterday', 'This Week', 'This Month', 'Older'];
+    for (const s of sessions) {
+      const k = dayKey(s.updatedAt);
+      if (!groups[k]) groups[k] = [];
+      groups[k].push(s);
+    }
+
+    if (sessions.length === 0) {
+      el.innerHTML = '<p style="padding:1rem 0.875rem;font-size:0.8125rem;color:var(--muted)">No sessions found.</p>';
+      return;
+    }
+
+    for (const key of ORDER) {
+      const list = groups[key];
+      if (!list || list.length === 0) continue;
+
+      const groupLabel = document.createElement('div');
+      groupLabel.className = 'sidebar-group-label';
+      groupLabel.textContent = key;
+      el.appendChild(groupLabel);
+
+      for (const s of list) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'card' + (s.sessionId === selectedId ? ' selected' : '');
+
+        const origin = s.agentOrigin || 'unknown';
+        const errLine = s.status === 'error' && s.errorSummary
+          ? `<div class="card-error-text">${escapeHtml(s.errorSummary.slice(0, 80))}${s.errorSummary.length > 80 ? '…' : ''}</div>`
+          : '';
+
+        btn.innerHTML = `
+          <p class="card-title">${escapeHtml(s.title)}</p>
+          <div class="card-meta card-meta-row">
+            <span class="card-dot ${dotClass(s.status)}" title="Status: ${s.status}"></span>
+            <span>${relTime(s.updatedAt)}</span>
+            <span>·</span>
+            <span>${s.actionsCount} actions</span>
+            <span class="agent-badge">${escapeHtml(origin)}</span>
+          </div>
+          ${errLine}
+        `;
+        btn.addEventListener('click', () => selectSession(s.sessionId));
+        el.appendChild(btn);
+      }
+    }
+  }
+
+  async function selectSession(id) {
+    selectedId = id;
+    summaryCache = null;
+    actionsCache = null;
+    renderSidebar();
+    setMainContent('<div class="empty-state"><p class="muted">Loading…</p></div>');
+
+    try {
+      const [detailR, sumR, actR] = await Promise.all([
+        apiFetch('/api/sessions/' + encodeURIComponent(id)),
+        apiFetch('/api/sessions/' + encodeURIComponent(id) + '/summary'),
+        apiFetch('/api/sessions/' + encodeURIComponent(id) + '/actions'),
+      ]);
+      if (!detailR.ok) throw new Error('Session not found');
+      const detail = await detailR.json();
+      summaryCache = await sumR.json();
+      actionsCache = await actR.json();
+      renderDetail(detail);
+    } catch (e) {
+      setMainContent('<div class="empty-state"><p class="error-text">Failed to load session.</p></div>');
+      toast(String(e.message || e));
+    }
+  }
+
+  function renderDetail(vm) {
+    const goal = vm.goal || vm.title;
+    const stLabel = vm.status === 'ended' ? 'completed' : vm.status;
+    const files = (vm.activeFiles || []).join(', ');
+
+    let execRows = '';
+
+    execRows += `
+      <div class="field-row">
+        <span class="field-icon field-icon-ok" aria-hidden="true">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-5"/></svg>
+        </span>
+        <span class="field-label-col">Goal</span>
+        <div class="field-value-col markdown-body">${renderMd(goal)}</div>
+      </div>
+    `;
+
+    execRows += `
+      <div class="field-row">
+        <span class="field-icon field-icon-info" aria-hidden="true">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        </span>
+        <span class="field-label-col">Status</span>
+        <div class="field-value-col">
+          <span class="status-pill">
+            <span class="status-dot ${dotClass(vm.status)}"></span>
+            <span>${escapeHtml(stLabel)}</span>
+          </span>
+        </div>
+      </div>
+    `;
+
+    execRows += `
+      <div class="field-row">
+        <span class="field-icon field-icon-clock" aria-hidden="true">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </span>
+        <span class="field-label-col">Updated</span>
+        <div class="field-value-col">${relTime(vm.updatedAt)} (${formatTime(vm.updatedAt)})</div>
+      </div>
+    `;
+
+    if (vm.lastPlannedAction) {
+      execRows += `
+        <div class="field-row">
+          <span class="field-icon field-icon-next" aria-hidden="true">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+          </span>
+          <span class="field-label-col">Next action</span>
+          <div class="field-value-col markdown-body">${renderMd(vm.lastPlannedAction)}</div>
+        </div>
+      `;
+    }
+
+    if (vm.errorSummary) {
+      execRows += `
+        <div class="field-row">
+          <span class="field-icon field-icon-err" aria-hidden="true">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          </span>
+          <span class="field-label-col">Error</span>
+          <div class="field-value-col error-text">${escapeHtml(vm.errorSummary)}</div>
+        </div>
+      `;
+    }
+
+    if (vm.decisions && vm.decisions.length) {
+      execRows += `
+        <div class="field-row">
+          <span class="field-icon field-icon-info" aria-hidden="true">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          </span>
+          <span class="field-label-col">Decisions</span>
+          <div class="field-value-col markdown-body"><ul>${vm.decisions.map((d) => `<li>${renderMd(d)}</li>`).join('')}</ul></div>
+        </div>
+      `;
+    }
+
+    if (vm.activeFiles && vm.activeFiles.length) {
+      execRows += `
+        <div class="field-row">
+          <span class="field-icon field-icon-info" aria-hidden="true">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          </span>
+          <span class="field-label-col">Key files</span>
+          <div class="field-value-col"><span class="muted" style="font-family:var(--mono);font-size:0.75rem">${vm.activeFiles.slice(0, 8).map((f) => escapeHtml(f)).join('<br>')}</span></div>
+        </div>
+      `;
+    }
+
+    let timelineHtml = '';
+    for (const row of actionsCache || []) {
+      const kind = actionKind(row.toolName);
+      timelineHtml += `
+        <div class="${tlClasses(row)}">
+          <span class="tl-kind">${kind}</span> ${escapeHtml(row.toolName)} — ${escapeHtml(row.summary || '')}
+        </div>`;
+    }
+    if (files) {
+      timelineHtml += `<div class="tl-item" style="margin-top:0.625rem"><strong>Files touched</strong><br><span class="muted">${escapeHtml(files)}</span></div>`;
+    }
+
+    const openPanelId = 'open-panel';
+
+    const mainContent = `
+      <div class="cards-grid">
+        <div class="info-card">
+          <div class="info-card-header">Executive Summary</div>
+          <div class="info-card-body">${execRows}</div>
+        </div>
+        <div class="info-card">
+          <div class="info-card-header">Timeline</div>
+          <div class="info-card-body">
+            <div class="timeline">${timelineHtml || '<p class="muted" style="margin:0;font-size:0.8125rem">No actions recorded.</p>'}</div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    $('main').innerHTML = `
+      <div class="main-scroll">${mainContent}</div>
+      <footer class="actions-footer" id="actions-footer">
+        <span class="actions-label">Actions</span>
+        <div class="actions-buttons">
+          <button type="button" class="btn btn-primary" id="copy-hand">Copy handoff</button>
+          <button type="button" class="btn" id="export-md">Export .md</button>
+          <button type="button" class="btn" id="toggle-open">Open in agent</button>
+        </div>
+      </footer>
+      <div class="open-drawer">
+        <div class="open-panel" id="${openPanelId}" hidden>
+          <div class="open-panel-grid">
+            <label>Agent
+              <select id="sel-agent">${AGENTS.map((a) => '<option value="' + a + '">' + a + '</option>').join('')}</select>
+            </label>
+            <label>Profile
+              <select id="sel-profile">${PROFILES.map((p) => '<option value="' + p + '">' + p + '</option>').join('')}</select>
+            </label>
+            <label>Exclude
+              <div class="exclude-options" id="exclude-box">
+                ${EXCLUDE_OPTS.map((o) => `<label><input type="checkbox" value="${o.value}"> ${o.label}</label>`).join('')}
+              </div>
+            </label>
+          </div>
+          <div class="open-panel-actions">
+            <button type="button" class="btn btn-ghost" id="cancel-open">Cancel</button>
+            <button type="button" class="btn btn-primary" id="confirm-open">Confirm and open</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    $('copy-hand').addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(summaryCache.handoffSummary || ''); toast('Copied handoff'); }
+      catch { toast('Clipboard failed'); }
+    });
+    $('export-md').addEventListener('click', () => {
+      const blob = new Blob([summaryCache.handoffSummary || ''], { type: 'text/markdown' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'picklejar-' + vm.sessionId + '-handoff.md';
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast('Download started');
+    });
+    $('toggle-open').addEventListener('click', () => {
+      const p = $(openPanelId);
+      p.hidden = !p.hidden;
+    });
+    $('cancel-open').addEventListener('click', () => {
+      $(openPanelId).hidden = true;
+    });
+    $('confirm-open').addEventListener('click', async () => {
+      const agent = $('sel-agent').value;
+      const profile = $('sel-profile').value;
+      const exclude = [];
+      document.querySelectorAll('#exclude-box input:checked').forEach((cb) => exclude.push(cb.value));
+      try {
+        const r = await apiFetch('/api/sessions/' + encodeURIComponent(vm.sessionId) + '/open', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agent, profile, exclude }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.error || 'Open failed');
+        toast(data.terminalHandoff ? 'Switch to the terminal: opening ' + agent : 'Opened in ' + agent);
+        $(openPanelId).hidden = true;
+      } catch (e) {
+        toast(String(e.message || e));
+      }
+    });
+  }
+
+  $('refresh').addEventListener('click', () => {
+    loadSessions().then(() => toast('Refreshed')).catch((e) => toast(String(e.message || e)));
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      void sendHeartbeat();
+    }
+  });
+  window.addEventListener('pagehide', () => closeExplorer('pagehide'));
+  window.addEventListener('beforeunload', () => closeExplorer('beforeunload'));
+
+  initTheme();
+  startHeartbeat();
+  loadSessions().catch((e) => {
+    $('sidebar').innerHTML = '<p class="error-text" style="padding:1rem 0.875rem;font-size:0.8125rem">' + escapeHtml(String(e.message || e)) + '</p>';
+  });
+})();
+  </script>
+</body>
+</html>

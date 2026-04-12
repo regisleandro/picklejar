@@ -7,6 +7,7 @@ import {
   actionPriority,
   normalizeCurationProfile,
 } from './curation.js';
+import { deriveSessionTitle } from './list-summary.js';
 
 export const DEFAULT_BRAIN_DUMP_SECTIONS = Object.freeze({
   goal: true,
@@ -187,7 +188,8 @@ export function compileBrainDump(session, opts = {}) {
   const discardedActions = collectDiscardedActions(session, { excludeActionIndexes, ignoreCuration, curationProfile });
   const lines = [];
 
-  lines.push(`# [PICKLEJAR RESUME] Session ${filteredSession.sessionId}`);
+  lines.push(`# [PICKLEJAR RESUME] ${deriveSessionTitle(filteredSession)}`);
+  lines.push(`> Session: ${filteredSession.sessionId}`);
   lines.push('');
   if (sections.resumeInstructions) {
     lines.push('**IMPORTANT: You are resuming a previous session. When the user sends their first message, you MUST start by briefly acknowledging you have context from the previous session and summarize what was being worked on before continuing.**');
@@ -307,7 +309,8 @@ function trimToTokenBudget(session, maxTokens, sections) {
   const maxChars = maxTokens * 4;
   const headParts = [];
 
-  headParts.push(`# [PICKLEJAR RESUME] Session ${session.sessionId}\n`);
+  headParts.push(`# [PICKLEJAR RESUME] ${deriveSessionTitle(session)}\n`);
+  headParts.push(`> Session: ${session.sessionId}\n\n`);
   if (sections.resumeInstructions) {
     headParts.push('**IMPORTANT: You are resuming a previous session. When the user sends their first message, you MUST start by briefly acknowledging you have context from the previous session and summarize what was being worked on before continuing.**\n\n');
   }
