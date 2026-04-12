@@ -8,6 +8,7 @@ import {
   updateTaskTree,
   setError,
   loadSession,
+  completeCurrentTask,
 } from '../src/core/state.js';
 import {
   saveSnapshot,
@@ -138,6 +139,32 @@ describe('state + snapshot', () => {
     const loaded = await loadSession(tmpDir, 'conc');
     expect(loaded).not.toBeNull();
     expect(['a', 'b', 'c']).toContain(loaded?.goal);
+  });
+});
+
+describe('completeCurrentTask', () => {
+  it('marks in_progress task as done', () => {
+    const s = createSession('ct1', '/tmp/p');
+    addAction(s, { id: 'a1', timestamp: Date.now(), toolName: 'Read', input: {}, output: 'out', relatedFiles: [] });
+    updateTaskTree(s, s.actions[0]);
+    expect(s.taskTree[0].status).toBe('in_progress');
+    completeCurrentTask(s, 'done');
+    expect(s.taskTree[0].status).toBe('done');
+  });
+
+  it('marks in_progress task as failed', () => {
+    const s = createSession('ct2', '/tmp/p');
+    addAction(s, { id: 'a1', timestamp: Date.now(), toolName: 'Read', input: {}, output: 'out', relatedFiles: [] });
+    updateTaskTree(s, s.actions[0]);
+    completeCurrentTask(s, 'failed', 'something went wrong');
+    expect(s.taskTree[0].status).toBe('failed');
+    expect(s.taskTree[0].output).toBe('something went wrong');
+  });
+
+  it('is a no-op when task tree is empty', () => {
+    const s = createSession('ct3', '/tmp/p');
+    expect(() => completeCurrentTask(s, 'done')).not.toThrow();
+    expect(s.taskTree).toHaveLength(0);
   });
 });
 

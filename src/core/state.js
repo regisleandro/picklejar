@@ -80,3 +80,19 @@ export function setError(session, error) {
   session.lastError = error;
   session.lastUpdatedAt = Date.now();
 }
+
+/**
+ * Marks the current in_progress task (or first task) as done or failed.
+ * Called when the session ends so the task tree reflects reality.
+ *
+ * @param {PicklejarSession} session
+ * @param {'done' | 'failed'} status
+ * @param {string} [output] optional summary to store on the node
+ */
+export function completeCurrentTask(session, status, output) {
+  const target = session.taskTree.find((n) => n.status === 'in_progress') ?? session.taskTree[0];
+  if (!target) return;
+  target.status = status;
+  if (output != null) target.output = output;
+  session.lastUpdatedAt = Date.now();
+}

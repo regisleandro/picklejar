@@ -179,10 +179,11 @@ function collectDiscardedActions(session, opts = {}) {
 
 /**
  * @param {PicklejarSession} session
- * @param {{ maxTokens?: number }} [opts]
+ * @param {{ maxTokens?: number, onTruncate?: (info: { estimatedTokens: number, maxTokens: number, omittedSections: string[] }) => void }} [opts]
  */
 export function compileBrainDump(session, opts = {}) {
   const maxTokens = opts.maxTokens ?? 30_000;
+  const onTruncate = typeof opts.onTruncate === 'function' ? opts.onTruncate : null;
   const { sections, excludeActionIndexes, ignoreCuration, curationProfile } = normalizeBrainDumpOptions(opts);
   const filteredSession = filterSessionActions(session, { excludeActionIndexes, ignoreCuration, curationProfile });
   const discardedActions = collectDiscardedActions(session, { excludeActionIndexes, ignoreCuration, curationProfile });
@@ -296,6 +297,13 @@ export function compileBrainDump(session, opts = {}) {
   if (estimateTokens(md) <= maxTokens) return md;
 
   // Priority trim: shrink summarized history, then large files, then old single-line actions
+  const estimatedTokens = estimateTokens(md);
+  const omittedSections = [];
+  if (sections.summarizedHistory) omittedSections.push('summarizedHistory');
+  if (sections.activeFiles && filteredSession.activeFiles?.length) omittedSections.push('activeFiles (truncated)');
+  if (sections.discardedPaths) omittedSections.push('discardedPaths');
+  onTruncate?.({ estimatedTokens, maxTokens, omittedSections });
+
   md = trimToTokenBudget(filteredSession, maxTokens, sections);
   return md;
 }

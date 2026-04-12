@@ -12,7 +12,7 @@ import {
   sectionsFromExcludeLabels,
   openSessionInAgent,
 } from '../src/core/resume-service.js';
-import { resumeContextPath, forceResumePath } from '../src/core/paths.js';
+import { resumeContextPath, forceResumePath, picklejarRoot } from '../src/core/paths.js';
 
 describe('resume-service', () => {
   /** @type {string} */
@@ -117,6 +117,25 @@ describe('resume-service', () => {
     expect(p.summarizedHistory).toBe(false);
     expect(p.resumeInstructions).toBe(false);
     expect(p.discardedPaths).toBe(false);
+  });
+
+  it('injectResumeContext removes resume-context.md and force-resume.json after injection', async () => {
+    const root = picklejarRoot(tmpDir);
+    await fs.mkdir(root, { recursive: true });
+    const brain = '# [PICKLEJAR RESUME] test\n> Session: inject-cleanup\n';
+    await fs.writeFile(resumeContextPath(tmpDir), brain, 'utf8');
+    await fs.writeFile(forceResumePath(tmpDir), JSON.stringify({ sessionId: 'inject-cleanup' }), 'utf8');
+
+    vi.restoreAllMocks();
+    const injected = await registry.injectResumeContext('claude', tmpDir);
+    expect(injected).toBe(true);
+
+    await expect(fs.access(resumeContextPath(tmpDir))).rejects.toThrow();
+    await expect(fs.access(forceResumePath(tmpDir))).rejects.toThrow();
+
+    // restore spy for other tests
+    vi.spyOn(registry, 'spawnAgent').mockImplementation(() => {});
+    vi.spyOn(registry, 'injectResumeContext').mockResolvedValue(true);
   });
 
   it('openSessionInAgent calls inject and spawn without subprocess CLI', async () => {

@@ -86,7 +86,7 @@ describe('hooks', () => {
     expect(snap?.type).toBe('pre-compact');
   });
 
-  it('session-end marks ended', async () => {
+  it('session-end marks ended and closes task tree as done', async () => {
     await runHook(
       'post-tool-use',
       {
@@ -101,6 +101,7 @@ describe('hooks', () => {
     expect(code).toBe(0);
     const snap = await loadSnapshot(tmpDir, 'end1');
     expect(snap?.session.ended).toBe(true);
+    expect(snap?.session.taskTree[0]?.status).toBe('done');
   });
 
   it('session-start extracts goal from transcript on startup', async () => {
@@ -115,6 +116,67 @@ describe('hooks', () => {
     expect(code).toBe(0);
     const snap = await loadSnapshot(tmpDir, 'goal-test');
     expect(snap?.session.goal).toBe('Implement JWT authentication');
+  });
+
+  it('pre-compact prunes old transcript backups beyond MAX (5)', async () => {
+    const transcriptPath = path.join(tmpDir, 'conv.jsonl');
+    await fs.writeFile(transcriptPath, '', 'utf8');
+
+    // Fire pre-compact 7 times to produce 7 backup files for the same session
+    for (let i = 0; i < 7; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await runHook(
+        'pre-compact',
+        { session_id: 'prune-s1', transcript_path: transcriptPath },
+        { CLAUDE_PROJECT_DIR: tmpDir },
+      );
+      // small delay so timestamps differ in filenames
+      await new Promise((r) => setTimeout(r, 5));
+    }
+
+    const transcriptsDir = path.join(tmpDir, '.picklejar', 'transcripts');
+    const files = (await fs.readdir(transcriptsDir)).filter((f) => f.startsWith('prune-s1-'));
+    expect(files.length).toBeLessThanOrEqual(5);
+  });
+
+  it('post-tool-use redacts secrets in activeFiles content', async () => {
+    const secretContent = 'const key = "sk-abcdefghijklmnopqrstuv";\nconsole.log(key);';
+    const { code } = await runHook(
+      'post-tool-use',
+      {
+        session_id: 'redact-s1',
+        tool_name: 'Read',
+        tool_input: { file_path: 'src/config.ts' },
+        tool_response: secretContent,
+      },
+      { CLAUDE_PROJECT_DIR: tmpDir, PICKLEJAR_PROJECT_DIR: tmpDir },
+    );
+    expect(code).toBe(0);
+    const snap = await loadSnapshot(tmpDir, 'redact-s1');
+    const activeFile = snap?.session.activeFiles.find((f) => f.path === 'src/config.ts');
+    expect(activeFile).toBeDefined();
+    expect(activeFile?.content).not.toContain('sk-abcdefghijklmnopqrstuv');
+    expect(activeFile?.content).toContain('[REDACTED]');
+  });
+
+  it('post-tool-use redacts secrets in Write activeFiles content', async () => {
+    const secretContent = 'Bearer eyJhbGciOiJSUzI1NiJ9.token';
+    const { code } = await runHook(
+      'post-tool-use',
+      {
+        session_id: 'redact-s2',
+        tool_name: 'Write',
+        tool_input: { file_path: 'src/auth.ts', content: `const token = "${secretContent}";` },
+        tool_response: 'written',
+      },
+      { CLAUDE_PROJECT_DIR: tmpDir, PICKLEJAR_PROJECT_DIR: tmpDir },
+    );
+    expect(code).toBe(0);
+    const snap = await loadSnapshot(tmpDir, 'redact-s2');
+    const activeFile = snap?.session.activeFiles.find((f) => f.path === 'src/auth.ts');
+    expect(activeFile).toBeDefined();
+    expect(activeFile?.content).not.toContain(secretContent);
+    expect(activeFile?.content).toContain('[REDACTED]');
   });
 
   it('session-start returns additionalContext on resume', async () => {

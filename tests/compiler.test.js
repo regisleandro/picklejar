@@ -286,6 +286,35 @@ describe('compiler', () => {
     expect(md).toContain('kept only for audit');
   });
 
+  it('calls onTruncate when brain dump exceeds token budget', () => {
+    const s = createSession('truncate-cb', '/tmp/p');
+    s.goal = 'Trigger truncation';
+    for (let i = 0; i < 10; i += 1) {
+      addAction(s, {
+        id: String(i),
+        timestamp: Date.now() + i,
+        toolName: 'Read',
+        input: {},
+        output: 'x'.repeat(800),
+        relatedFiles: [`file-${i}.ts`],
+      });
+    }
+    const calls = [];
+    compileBrainDump(s, { maxTokens: 120, onTruncate: (info) => calls.push(info) });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].estimatedTokens).toBeGreaterThan(120);
+    expect(calls[0].maxTokens).toBe(120);
+    expect(Array.isArray(calls[0].omittedSections)).toBe(true);
+  });
+
+  it('does NOT call onTruncate when brain dump fits within budget', () => {
+    const s = createSession('no-truncate-cb', '/tmp/p');
+    s.goal = 'Short session';
+    const calls = [];
+    compileBrainDump(s, { maxTokens: 50_000, onTruncate: (info) => calls.push(info) });
+    expect(calls).toHaveLength(0);
+  });
+
   it('keeps current trusted state in trimmed dumps', () => {
     const s = createSession('trimmed-state', '/tmp/p');
     s.goal = 'Keep trusted state visible';

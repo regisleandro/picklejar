@@ -22,8 +22,14 @@ const DEFAULTS = {
  * @returns {Promise<PicklejarConfig>}
  */
 export async function loadConfig(projectDir) {
+  let raw;
   try {
-    const raw = await fs.readFile(configPath(projectDir), 'utf8');
+    raw = await fs.readFile(configPath(projectDir), 'utf8');
+  } catch {
+    // config.json not present — use defaults silently
+    return { ...DEFAULTS };
+  }
+  try {
     const parsed = JSON.parse(raw);
     return {
       ...DEFAULTS,
@@ -31,6 +37,10 @@ export async function loadConfig(projectDir) {
       redactPatterns: parsed.redactPatterns ?? DEFAULTS.redactPatterns,
     };
   } catch {
+    process.stderr.write(
+      '[picklejar] Warning: .picklejar/config.json is not valid JSON — using defaults. ' +
+      'Redaction patterns from config are NOT active.\n',
+    );
     return { ...DEFAULTS };
   }
 }

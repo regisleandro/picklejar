@@ -8,18 +8,40 @@ import { transcriptsDir } from '../core/paths.js';
 import { readStdinJson, getProjectDir, logErr } from './_lib.js';
 import { resolveSessionIdFromPayload } from '../core/normalize-payload.js';
 
+const MAX_TRANSCRIPT_BACKUPS = 5;
+
 async function backupTranscript(projectDir, sessionId, transcriptPath) {
   if (!transcriptPath) return;
   try {
-    await fs.mkdir(transcriptsDir(projectDir), { recursive: true });
+    const dir = transcriptsDir(projectDir);
+    await fs.mkdir(dir, { recursive: true });
     const base = path.basename(transcriptPath);
-    const dest = path.join(
-      transcriptsDir(projectDir),
-      `${sessionId}-${Date.now()}-${base || 'transcript.jsonl'}`,
-    );
+    const dest = path.join(dir, `${sessionId}-${Date.now()}-${base || 'transcript.jsonl'}`);
     await fs.copyFile(transcriptPath, dest);
+    await pruneTranscriptBackups(dir, sessionId);
   } catch (e) {
     logErr(e);
+  }
+}
+
+/**
+ * Keep only the newest MAX_TRANSCRIPT_BACKUPS files for the given session.
+ * @param {string} dir
+ * @param {string} sessionId
+ */
+async function pruneTranscriptBackups(dir, sessionId) {
+  try {
+    const entries = await fs.readdir(dir);
+    const prefix = `${sessionId}-`;
+    const sessionFiles = entries
+      .filter((f) => f.startsWith(prefix))
+      .sort();
+    const toDrop = sessionFiles.slice(0, Math.max(0, sessionFiles.length - MAX_TRANSCRIPT_BACKUPS));
+    for (const f of toDrop) {
+      await fs.unlink(path.join(dir, f)).catch(() => {});
+    }
+  } catch {
+    /* ignore readdir errors */
   }
 }
 
