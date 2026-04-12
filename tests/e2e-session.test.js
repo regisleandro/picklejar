@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadSnapshot } from '../src/core/snapshot.js';
+import { loadSnapshot, saveSnapshot } from '../src/core/snapshot.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const cli = path.join(root, 'src', 'cli.js');
@@ -56,6 +56,13 @@ beforeEach(async () => {
 afterEach(async () => {
   await fs.rm(proj, { recursive: true, force: true });
 });
+
+async function updateLatestSession(sessionId, updater) {
+  const loaded = await loadSnapshot(proj, sessionId);
+  expect(loaded).toBeTruthy();
+  updater(loaded.session);
+  await saveSnapshot(loaded.session);
+}
 
 describe('e2e', () => {
   it('post-tool-use persists detected agent origin on new sessions', async () => {
@@ -112,6 +119,14 @@ describe('e2e', () => {
     const { code, out } = await runCli(['capabilities', 'claude'], process.cwd());
     expect(code).toBe(0);
     expect(out).toContain('"hooks"');
+  });
+
+  it('help no longer exposes curate', async () => {
+    const { code, out } = await runCli(['--help'], process.cwd());
+    expect(code).toBe(0);
+    expect(out).not.toContain('curate');
+    expect(out).toContain('list');
+    expect(out).toContain('resume');
   });
 
   it('init creates run-hook and settings with both resume and startup matchers', async () => {
@@ -225,21 +240,26 @@ describe('e2e', () => {
     expect(snap?.session.actions[0].output.split('\n').length).toBeLessThan(600);
   });
 
-  it('list shows sessions by default', async () => {
+  it('list shows full session id and wider titles by default', async () => {
     await runHook(
       'post-tool-use',
       {
-        session_id: 'list-default',
+        session_id: 'list-default-session-id',
         tool_name: 'Read',
         tool_input: { file_path: 'src/default.ts' },
         tool_response: 'ok',
       },
       { CLAUDE_PROJECT_DIR: proj },
     );
+    const longTitle = 'Session list title width validation for operations view';
+    const { code: goalCode } = await runCli(['goal', longTitle, proj], process.cwd());
+    expect(goalCode).toBe(0);
     const { code, out } = await runCli(['list', proj], process.cwd());
     expect(code).toBe(0);
     expect(out).toContain('Sessions found');
-    expect(out).toContain('list-d');
+    expect(out).toContain('SESSION ID');
+    expect(out).toContain('list-default-session-id');
+    expect(out).toContain(longTitle);
   });
 
   it('list --verbose shows derived title, action count, and ended status', async () => {
@@ -350,7 +370,7 @@ describe('e2e', () => {
     expect(ctx).not.toContain('- [Read] two.ts');
   });
 
-  it('curate exclude persists and resume respects it by default', async () => {
+  it('resume respects persisted curation metadata by default', async () => {
     await runHook(
       'post-tool-use',
       {
@@ -371,9 +391,13 @@ describe('e2e', () => {
       },
       { CLAUDE_PROJECT_DIR: proj },
     );
-
-    const excluded = await runCli(['curate', 'exclude', 'curate-resume', '2', proj], process.cwd());
-    expect(excluded.code).toBe(0);
+    await updateLatestSession('curate-resume', (session) => {
+      const action = session.actions?.[1];
+      action.includeInBrainDump = false;
+      action.curationStatus = 'discarded';
+      action.curatedAt = Date.now();
+      action.curatedBy = 'test';
+    });
 
     const { code } = await runCli(['resume', 'curate-resume', proj], process.cwd());
     expect(code).toBe(0);
@@ -394,8 +418,13 @@ describe('e2e', () => {
       },
       { CLAUDE_PROJECT_DIR: proj },
     );
-    const excluded = await runCli(['curate', 'exclude', 'curate-ignore', '1', proj], process.cwd());
-    expect(excluded.code).toBe(0);
+    await updateLatestSession('curate-ignore', (session) => {
+      const action = session.actions?.[0];
+      action.includeInBrainDump = false;
+      action.curationStatus = 'discarded';
+      action.curatedAt = Date.now();
+      action.curatedBy = 'test';
+    });
 
     const { code } = await runCli(['resume', 'curate-ignore', proj, '--ignore-curation'], process.cwd());
     expect(code).toBe(0);
@@ -415,50 +444,20 @@ describe('e2e', () => {
       },
       { CLAUDE_PROJECT_DIR: proj },
     );
-    const tagged = await runCli(['curate', 'tag', 'actions-cli', '1', 'confirmed', proj], process.cwd());
-    expect(tagged.code).toBe(0);
-    const noted = await runCli(['curate', 'note', 'actions-cli', '1', 'validated', proj], process.cwd());
-    expect(noted.code).toBe(0);
+    await updateLatestSession('actions-cli', (session) => {
+      const action = session.actions?.[0];
+      action.curationStatus = 'confirmed';
+      action.includeInBrainDump = true;
+      action.curationNote = 'validated';
+      action.curatedAt = Date.now();
+      action.curatedBy = 'test';
+    });
 
     const { code, out } = await runCli(['actions', 'actions-cli', proj], process.cwd());
     expect(code).toBe(0);
     expect(out).toContain('confirmed');
     expect(out).toContain('validated');
     expect(out).toContain('yes');
-  });
-
-  it('curate suggest reports likely inconsistent actions', async () => {
-    await runHook(
-      'post-tool-use',
-      {
-        session_id: 'suggest-cli',
-        tool_name: 'Bash',
-        tool_input: { command: 'cat missing.txt' },
-        tool_response: 'cat: missing.txt: No such file or directory',
-      },
-      { CLAUDE_PROJECT_DIR: proj },
-    );
-    const { code, out } = await runCli(['curate', 'suggest', 'suggest-cli', proj], process.cwd());
-    expect(code).toBe(0);
-    expect(out).toContain('inconsistent');
-    expect(out).toContain('failure keywords detected');
-  });
-
-  it('curate review supports non-tty fallback prompts', async () => {
-    await runHook(
-      'post-tool-use',
-      {
-        session_id: 'review-cli',
-        tool_name: 'Read',
-        tool_input: { file_path: 'src/review.ts' },
-        tool_response: 'ok',
-      },
-      { CLAUDE_PROJECT_DIR: proj },
-    );
-    const { code } = await runCli(['curate', 'review', 'review-cli', proj], process.cwd(), 'confirmed 1\n');
-    expect(code).toBe(0);
-    const { out } = await runCli(['actions', 'review-cli', proj], process.cwd());
-    expect(out).toContain('confirmed');
   });
 
   it('resume supports strict profile with confirmed actions only', async () => {
@@ -482,7 +481,13 @@ describe('e2e', () => {
       },
       { CLAUDE_PROJECT_DIR: proj },
     );
-    await runCli(['curate', 'confirm', 'profile-strict', '1', proj], process.cwd());
+    await updateLatestSession('profile-strict', (session) => {
+      const action = session.actions?.[0];
+      action.curationStatus = 'confirmed';
+      action.includeInBrainDump = true;
+      action.curatedAt = Date.now();
+      action.curatedBy = 'test';
+    });
     const { code } = await runCli(['resume', 'profile-strict', proj, '--profile', 'strict'], process.cwd());
     expect(code).toBe(0);
     const ctx = await fs.readFile(path.join(proj, '.picklejar', 'resume-context.md'), 'utf8');
@@ -501,77 +506,19 @@ describe('e2e', () => {
       },
       { CLAUDE_PROJECT_DIR: proj },
     );
-    await runCli(['curate', 'exclude', 'profile-audit', '1', proj], process.cwd());
+    await updateLatestSession('profile-audit', (session) => {
+      const action = session.actions?.[0];
+      action.curationStatus = 'discarded';
+      action.includeInBrainDump = false;
+      action.curatedAt = Date.now();
+      action.curatedBy = 'test';
+    });
     const outFile = path.join(proj, 'audit.md');
     const { code } = await runCli(['export', 'profile-audit', proj, '--profile', 'audit', '-o', outFile], process.cwd());
     expect(code).toBe(0);
     const md = await fs.readFile(outFile, 'utf8');
     expect(md).toContain('src/audit.ts');
     expect(md).toContain('## DISCARDED PATHS');
-  });
-
-  it('curate approve-unsuggested confirms only clean actions', async () => {
-    await runHook(
-      'post-tool-use',
-      {
-        session_id: 'approve-unsuggested',
-        tool_name: 'Read',
-        tool_input: { file_path: 'src/clean.ts' },
-        tool_response: 'clean',
-      },
-      { CLAUDE_PROJECT_DIR: proj },
-    );
-    await runHook(
-      'post-tool-use',
-      {
-        session_id: 'approve-unsuggested',
-        tool_name: 'Bash',
-        tool_input: { command: 'cat missing.txt' },
-        tool_response: 'cat: missing.txt: No such file or directory',
-      },
-      { CLAUDE_PROJECT_DIR: proj },
-    );
-    const { code } = await runCli(['curate', 'approve-unsuggested', 'approve-unsuggested', proj], process.cwd());
-    expect(code).toBe(0);
-    const { out } = await runCli(['actions', 'approve-unsuggested', proj], process.cwd());
-    expect(out).toContain('\tconfirmed\t');
-    expect(out).toContain('\tdefault\t');
-  });
-
-  it('curate exclude-suggested applies heuristic exclusions', async () => {
-    await runHook(
-      'post-tool-use',
-      {
-        session_id: 'exclude-suggested',
-        tool_name: 'Bash',
-        tool_input: { command: 'cat missing.txt' },
-        tool_response: 'cat: missing.txt: No such file or directory',
-      },
-      { CLAUDE_PROJECT_DIR: proj },
-    );
-    const { code } = await runCli(['curate', 'exclude-suggested', 'exclude-suggested', proj], process.cwd());
-    expect(code).toBe(0);
-    const { out } = await runCli(['actions', 'exclude-suggested', proj], process.cwd());
-    expect(out).toContain('inconsistent');
-    expect(out).toContain('\tno\t');
-  });
-
-  it('curate stats prints counts by status', async () => {
-    await runHook(
-      'post-tool-use',
-      {
-        session_id: 'stats-cli',
-        tool_name: 'Read',
-        tool_input: { file_path: 'src/one.ts' },
-        tool_response: 'ok',
-      },
-      { CLAUDE_PROJECT_DIR: proj },
-    );
-    await runCli(['curate', 'confirm', 'stats-cli', '1', proj], process.cwd());
-    const { code, out } = await runCli(['curate', 'stats', 'stats-cli', proj], process.cwd());
-    expect(code).toBe(0);
-    expect(out).toContain('total\t1');
-    expect(out).toContain('status:confirmed\t1');
   });
 
   it('export reports invalid profile cleanly', async () => {

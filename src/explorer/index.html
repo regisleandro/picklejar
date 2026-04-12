@@ -633,7 +633,8 @@
   <script>
 (function () {
   const BOOTSTRAP = window.__PICKLEJAR_EXPLORER__ || {};
-  const AGENTS = ['claude', 'cursor', 'opencode', 'cline', 'aider'];
+  const DEFAULT_AGENTS = ['claude', 'cursor', 'opencode', 'cline', 'aider'];
+  const AGENTS = Array.isArray(BOOTSTRAP.agents) && BOOTSTRAP.agents.length ? BOOTSTRAP.agents : DEFAULT_AGENTS;
   const PROFILES = ['balanced', 'strict', 'audit', 'recovery'];
   const EXCLUDE_OPTS = [
     { value: 'history', label: 'History' },

@@ -157,6 +157,7 @@ export async function createExplorerServer(projectDir, options = {}) {
     token: ephemeral?.token || '',
     heartbeatMs,
     idleTimeoutMs,
+    agents: AGENT_IDS,
   });
   const activeClients = new Map();
   let lastActivityAt = Date.now();

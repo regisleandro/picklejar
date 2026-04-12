@@ -76,7 +76,7 @@ export function buildSessionViewModel(session, snapshotsCount) {
     errorSummary: session.lastError ? String(session.lastError) : null,
     actionsCount: session.actions?.length ?? 0,
     snapshotsCount,
-    activeFiles: collectSessionFiles(session, Infinity),
+    activeFiles: collectSessionFiles(session, 20),
     decisions: (session.decisions ?? []).map((d) => d.description),
     lastPlannedAction: session.lastPlannedAction ? String(session.lastPlannedAction) : null,
     curationStats: summarizeCurationStats(session),
@@ -120,12 +120,15 @@ export async function listSessions(projectDir) {
     bySession.get(r.sessionId).count += 1;
   }
 
-  const out = [];
-  for (const [sessionId, { count }] of bySession) {
-    const loaded = await loadSnapshot(projectDir, sessionId);
-    if (!loaded) continue;
-    out.push(buildSessionViewModel(loaded.session, count));
-  }
+  const out = (
+    await Promise.all(
+      Array.from(bySession.entries(), async ([sessionId, { count }]) => {
+        const loaded = await loadSnapshot(projectDir, sessionId);
+        if (!loaded) return null;
+        return buildSessionViewModel(loaded.session, count);
+      }),
+    )
+  ).filter(Boolean);
 
   out.sort((a, b) => b.updatedAt - a.updatedAt);
   return out;
