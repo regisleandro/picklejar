@@ -1,7 +1,7 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { spawn } from 'node:child_process';
-import { resumeContextPath } from '../core/paths.js';
+import { resumeContextPath, forceResumePath } from '../core/paths.js';
 import { writeResumeToClaude } from '../adapters/claude-code.js';
 import { writeResumeToAgentsMd } from '../adapters/agents-md.js';
 import { writeResumeToAntigravity } from '../adapters/antigravity.js';
@@ -164,6 +164,13 @@ export async function injectResumeContext(agent, projectDir) {
     default:
       await writeResumeToAgentsMd(projectDir, brain);
   }
+
+  // Clean up resume artifacts so stale context is not re-injected on the next
+  // `picklejar start` call. For hooks-track agents the session-start hook also
+  // tries to delete force-resume.json, so this is intentionally idempotent.
+  await fs.unlink(ctxPath).catch(() => {});
+  await fs.unlink(forceResumePath(projectDir)).catch(() => {});
+
   return true;
 }
 

@@ -66,6 +66,7 @@ export function buildHandoffDumpOptions(options = {}) {
  * @param {number} params.maxTokens
  * @param {NormalizedBrainDumpOptions} params.brainDumpOpts
  * @param {PicklejarSession} [params.session] when set, skips loadSnapshot
+ * @param {(info: { estimatedTokens: number, maxTokens: number, omittedSections: string[] }) => void} [params.onTruncate]
  * @returns {Promise<{ brainDump: string, sessionId: string }>}
  */
 export async function prepareResumeContext({
@@ -74,6 +75,7 @@ export async function prepareResumeContext({
   maxTokens,
   brainDumpOpts,
   session: sessionMaybe,
+  onTruncate,
 }) {
   const session =
     sessionMaybe ?? (await loadSnapshot(projectDir, sessionId))?.session ?? null;
@@ -81,7 +83,7 @@ export async function prepareResumeContext({
     throw new Error('Session not found');
   }
 
-  const md = compileBrainDump(session, { maxTokens, ...brainDumpOpts });
+  const md = compileBrainDump(session, { maxTokens, ...brainDumpOpts, onTruncate });
 
   await fs.mkdir(picklejarRoot(projectDir), { recursive: true });
   await fs.writeFile(resumeContextPath(projectDir), md, 'utf8');
@@ -106,6 +108,7 @@ export async function prepareResumeContext({
  * @param {PicklejarSession} [params.session]
  * @param {(injected: boolean) => void} [params.onInjected] called after inject, before spawn
  * @param {boolean} [params.detachSpawn] spawn agent in background (explorer HTTP server)
+ * @param {(info: { estimatedTokens: number, maxTokens: number, omittedSections: string[] }) => void} [params.onTruncate]
  * @returns {Promise<{ success: true, agent: string, injected: boolean }>}
  */
 export async function openSessionInAgent({
@@ -117,6 +120,7 @@ export async function openSessionInAgent({
   session,
   onInjected,
   detachSpawn = false,
+  onTruncate,
 }) {
   await prepareResumeContext({
     projectDir,
@@ -124,6 +128,7 @@ export async function openSessionInAgent({
     maxTokens,
     brainDumpOpts,
     session,
+    onTruncate,
   });
   const injected = await injectResumeContext(agent, projectDir);
   onInjected?.(injected);

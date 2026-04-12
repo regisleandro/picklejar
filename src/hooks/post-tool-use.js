@@ -73,8 +73,9 @@ function upsertActiveFile(session, relPath, content, now, lastAction) {
  * @param {string} toolName
  * @param {Record<string, unknown>} input
  * @param {string} output
+ * @param {string[]} redactPatterns
  */
-function applyActiveFiles(session, toolName, input, output) {
+function applyActiveFiles(session, toolName, input, output, redactPatterns) {
   const tn = String(toolName);
   const rel = toProjectRelative(
     session.projectDir,
@@ -87,7 +88,7 @@ function applyActiveFiles(session, toolName, input, output) {
   );
   const now = Date.now();
   if ((/read/i.test(tn) || /read_file|list_files|search_files/i.test(tn)) && rel) {
-    upsertActiveFile(session, rel, output, now, 'read');
+    upsertActiveFile(session, rel, redactWithPatterns(output, redactPatterns), now, 'read');
   }
   if (
     (/write/i.test(tn) ||
@@ -96,12 +97,13 @@ function applyActiveFiles(session, toolName, input, output) {
       /write_to_file|apply_diff|delete_file/i.test(tn)) &&
     rel
   ) {
-    const content = String(
+    const raw = String(
       /** @type {any} */ (input).new_string ??
         /** @type {any} */ (input).content ??
         /** @type {any} */ (input).after ??
         output,
     ).slice(0, 500_000);
+    const content = redactWithPatterns(raw, redactPatterns);
     const lastAction = /edit|multiedit|apply_diff/i.test(tn) ? 'edit' : 'write';
     upsertActiveFile(session, rel, content, now, lastAction);
   }
@@ -149,7 +151,7 @@ async function main() {
 
   addAction(session, action);
   updateTaskTree(session, action);
-  applyActiveFiles(session, toolName, action.input, toolResponse);
+  applyActiveFiles(session, toolName, action.input, toolResponse, cfg.redactPatterns);
 
   if (!session.goal) {
     const tp = session.transcriptPath;

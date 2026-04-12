@@ -323,6 +323,17 @@ async function promptForExcludedActions(session) {
 }
 
 /**
+ * @param {{ estimatedTokens: number, maxTokens: number, omittedSections: string[] }} info
+ */
+function warnOnTruncate({ estimatedTokens, maxTokens, omittedSections }) {
+  console.warn(
+    `Warning: brain dump exceeded token budget (estimated ${estimatedTokens} tokens, limit ${maxTokens}).` +
+    ` The following sections were trimmed: ${omittedSections.join(', ') || 'history/files'}.` +
+    ` Increase maxTokens in .picklejar/config.json to retain full context.`,
+  );
+}
+
+/**
  * @param {import('./types/index.d.ts').PicklejarSession} session
  * @param {Record<string, unknown>} opts
  */
@@ -527,7 +538,7 @@ exportCmd.action(async (id, dir) => {
     }
     const cfg = await loadConfig(projectDir);
     const dumpOptions = await resolveBrainDumpOptions(loaded.session, opts);
-    const md = compileBrainDump(loaded.session, { maxTokens: cfg.maxTokens, ...dumpOptions });
+    const md = compileBrainDump(loaded.session, { maxTokens: cfg.maxTokens, ...dumpOptions, onTruncate: warnOnTruncate });
     await fs.mkdir(path.dirname(outPath), { recursive: true });
     await fs.writeFile(outPath, md, 'utf8');
     console.log(`Wrote ${outPath}`);
@@ -570,7 +581,7 @@ resumeCmd.action(async (idArg, dir) => {
     }
     const cfg = await loadConfig(projectDir);
     const dumpOptions = await resolveBrainDumpOptions(loaded.session, opts);
-    const md = compileBrainDump(loaded.session, { maxTokens: cfg.maxTokens, ...dumpOptions });
+    const md = compileBrainDump(loaded.session, { maxTokens: cfg.maxTokens, ...dumpOptions, onTruncate: warnOnTruncate });
 
     await fs.mkdir(picklejarRoot(projectDir), { recursive: true });
     await fs.writeFile(resumeContextPath(projectDir), md, 'utf8');
@@ -623,6 +634,7 @@ openCmd.action(async (id, dir) => {
       maxTokens: cfg.maxTokens,
       brainDumpOpts,
       session: loaded.session,
+      onTruncate: warnOnTruncate,
       onInjected: (injected) => {
         if (injected) {
           console.log('Resume context injected for', agent);

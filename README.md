@@ -133,10 +133,23 @@ The generated brain dump can include:
 
 Profile behavior:
 
-- `balanced`: keeps default and confirmed work, excludes discarded/bad paths
-- `strict`: keeps only `confirmed`
-- `audit`: keeps everything and enables `DISCARDED PATHS`
-- `recovery`: excludes `hallucinated` and `inconsistent`, keeps `dead_end`
+| Profile | What is included | Notes |
+|---------|-----------------|-------|
+| `balanced` | `default` and `confirmed` actions | Excludes `discarded`, `hallucinated`, `inconsistent`, `dead_end`. Default when `--profile` is omitted. |
+| `strict` | Only `confirmed` actions | Use when you want a minimal, high-confidence dump. |
+| `audit` | Everything | Includes discarded and hallucinated actions. Automatically enables `DISCARDED PATHS` section. |
+| `recovery` | All except `hallucinated` and `inconsistent` | Keeps `dead_end` paths. Use after a bad session to recover usable context. |
+
+Curation status values stored on actions:
+
+| Status | Meaning |
+|--------|---------|
+| `default` | Normal action, no curation applied |
+| `confirmed` | Explicitly marked as correct and trustworthy |
+| `discarded` | Intentionally excluded from trusted context |
+| `hallucinated` | Agent produced incorrect or fabricated output |
+| `inconsistent` | Output contradicts earlier state |
+| `dead_end` | Path was explored but ultimately abandoned |
 
 Persisted curation metadata is honored when present in stored actions. Picklejar still exposes that metadata in `picklejar actions`, but the CLI no longer exposes a `curate` command.
 
@@ -174,7 +187,21 @@ Default `.picklejar/config.json` values:
 }
 ```
 
-`redactPatterns` are applied before tool output is persisted.
+`redactPatterns` are applied before tool output **and active file content** is persisted. If `config.json` exists but contains invalid JSON, Picklejar warns to stderr and falls back to defaults — redaction patterns from the file will not be active.
+
+`maxTokens` controls the character budget for generated brain dumps. Increase it when sessions are large and you see truncation warnings.
+
+## Environment Variables
+
+| Variable | Purpose |
+|----------|---------|
+| `PICKLEJAR_PROJECT_DIR` | Override the project directory used by hooks (fallback when `CLAUDE_PROJECT_DIR` is not set) |
+| `PICKLEJAR_AGENT_ORIGIN` | Force the agent origin label written to snapshots (`claude`, `cursor`, `copilot`, `cline`, `continue`) |
+| `PICKLEJAR_BROWSER` | Override the browser command used by `picklejar explore` to open the UI |
+| `PICKLEJAR_REMOTE` | Set to `1` to make `picklejar explore` bind to `0.0.0.0` and skip browser auto-open (equivalent to `--remote`) |
+| `PICKLEJAR_PORT` | Override the port used by `picklejar explore` (equivalent to `--port`) |
+
+`CLAUDE_PROJECT_DIR` and `CURSOR_PROJECT_DIR` are also read by hooks and take precedence over `PICKLEJAR_PROJECT_DIR`.
 
 ## Agent Launch Semantics
 
