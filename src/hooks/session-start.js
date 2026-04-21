@@ -56,7 +56,7 @@ async function main() {
       const tp = mapped.transcriptPath;
       if (typeof tp === 'string') session.transcriptPath = tp;
     }
-    if (!session.agentOrigin && agentOrigin) {
+    if (agentOrigin) {
       session.agentOrigin = agentOrigin;
     }
     if (!session.goal && session.transcriptPath) {

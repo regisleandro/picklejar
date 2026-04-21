@@ -2,7 +2,7 @@ import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { listSessions, loadSessionDetail, getSessionViewModel } from '../core/sessions.js';
+import { listSessions, loadSessionDetail, getSessionViewModel, getProjectAnalytics } from '../core/sessions.js';
 import { compileHumanSummary } from '../core/human-summary.js';
 import { compileBrainDump, listSelectableActions } from '../core/compiler.js';
 import { loadConfig } from '../core/config.js';
@@ -350,6 +350,15 @@ export async function createExplorerServer(projectDir, options = {}) {
         noteServerActivity();
         const sessions = await listSessions(projectDir);
         sendJSON(res, 200, sessions);
+        return;
+      }
+
+      if (req.method === 'GET' && p === '/api/analytics') {
+        noteServerActivity();
+        const w = url.searchParams.get('window')?.trim().toLowerCase() || 'all';
+        const windowParam = w === '7d' || w === '30d' ? w : 'all';
+        const data = await getProjectAnalytics(projectDir, windowParam);
+        sendJSON(res, 200, data);
         return;
       }
 

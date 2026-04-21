@@ -1,0 +1,76 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PICKLEJAR_AGENT_ORIGIN=\"continue\" node $CLAUDE_PROJECT_DIR/.picklejar/hooks/run-hook.js session-start"
+          }
+        ]
+      },
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PICKLEJAR_AGENT_ORIGIN=\"continue\" node $CLAUDE_PROJECT_DIR/.picklejar/hooks/run-hook.js session-start"
+          }
+        ]
+      },
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PICKLEJAR_AGENT_ORIGIN=\"continue\" node $CLAUDE_PROJECT_DIR/.picklejar/hooks/run-hook.js session-start"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PICKLEJAR_AGENT_ORIGIN=\"continue\" node $CLAUDE_PROJECT_DIR/.picklejar/hooks/run-hook.js post-tool-use",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PICKLEJAR_AGENT_ORIGIN=\"continue\" node $CLAUDE_PROJECT_DIR/.picklejar/hooks/run-hook.js pre-compact"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PICKLEJAR_AGENT_ORIGIN=\"continue\" node $CLAUDE_PROJECT_DIR/.picklejar/hooks/run-hook.js stop",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PICKLEJAR_AGENT_ORIGIN=\"continue\" node $CLAUDE_PROJECT_DIR/.picklejar/hooks/run-hook.js session-end"
+          }
+        ]
+      }
+    ]
+  }
+}
