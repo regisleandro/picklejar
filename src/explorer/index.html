@@ -1096,6 +1096,8 @@
   let explorerClosed = false;
   /** @type {{ window: string, data: unknown } | null} */
   let analyticsCache = null;
+  /** @type {HTMLElement | null} */
+  let analyticsDrawerReturnFocusEl = null;
 
   const $ = (id) => document.getElementById(id);
   const THEME_KEY = 'picklejar-explorer-theme';
@@ -1602,8 +1604,11 @@
   function openAnalyticsDrawer() {
     const d = $('analytics-drawer');
     if (!d) return;
+    analyticsDrawerReturnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     d.hidden = false;
     d.setAttribute('aria-hidden', 'false');
+    const closeBtn = $('analytics-drawer-close');
+    if (closeBtn instanceof HTMLElement) closeBtn.focus();
     void loadAnalyticsPanel();
   }
 
@@ -1612,6 +1617,21 @@
     if (!d) return;
     d.hidden = true;
     d.setAttribute('aria-hidden', 'true');
+    if (analyticsDrawerReturnFocusEl && analyticsDrawerReturnFocusEl.isConnected) {
+      analyticsDrawerReturnFocusEl.focus();
+    }
+    analyticsDrawerReturnFocusEl = null;
+  }
+
+  function getAnalyticsDrawerFocusable() {
+    const d = $('analytics-drawer');
+    if (!d || d.hidden) return [];
+    const panel = d.querySelector('.analytics-drawer__panel');
+    if (!(panel instanceof HTMLElement)) return [];
+    const nodes = panel.querySelectorAll(
+      'button:not([disabled]),[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])',
+    );
+    return Array.from(nodes).filter((el) => el instanceof HTMLElement && !el.hidden);
   }
 
   function wireDetailTabs() {
@@ -1650,9 +1670,30 @@
       });
     }
     document.addEventListener('keydown', (e) => {
-      if (e.key !== 'Escape') return;
       const dr = $('analytics-drawer');
-      if (dr && !dr.hidden) closeAnalyticsDrawer();
+      if (!dr || dr.hidden) return;
+      if (e.key === 'Escape') {
+        closeAnalyticsDrawer();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const focusable = getAnalyticsDrawerFocusable();
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      const activeIndex = active ? focusable.indexOf(active) : -1;
+      if (e.shiftKey) {
+        if (activeIndex <= 0) {
+          e.preventDefault();
+          last.focus();
+        }
+        return;
+      }
+      if (activeIndex < 0 || activeIndex === focusable.length - 1) {
+        e.preventDefault();
+        first.focus();
+      }
     });
   }
 

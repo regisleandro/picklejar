@@ -11,31 +11,40 @@ function normPath(p) {
 }
 
 /**
- * @param {PicklejarSession} session
- * @returns {number}
+ * @typedef {object} SessionInsightsCounts
+ * @property {number} total
+ * @property {number} hallucinated
+ * @property {number} inconsistent
+ * @property {number} deadEndActions
+ * @property {number} reworkActions
+ * @property {number} included
  */
-function countReworkActions(session) {
-  const actions = session.actions ?? [];
-  const seenFiles = new Set();
-  let rework = 0;
-  for (const a of actions) {
-    const files = (a.relatedFiles ?? []).map(normPath).filter(Boolean);
-    let touchedBefore = false;
-    for (const f of files) {
-      if (seenFiles.has(f)) {
-        touchedBefore = true;
-        break;
-      }
-    }
-    if (touchedBefore && files.length > 0) rework += 1;
-    for (const f of files) seenFiles.add(f);
-  }
-  return rework;
-}
+
+/**
+ * @typedef {object} SessionInsightsDisplay
+ * @property {string} hallucinationPct
+ * @property {string} deadEndPct
+ * @property {string} reworkPct
+ * @property {string} successPct
+ */
+
+/**
+ * @typedef {object} SessionInsights
+ * @property {number} hallucinationRate
+ * @property {number} deadEndRate
+ * @property {number} reworkRate
+ * @property {number} successSignal
+ * @property {number} qualityScore
+ * @property {'low' | 'medium' | 'high'} riskLevel
+ * @property {string[]} timelineChips
+ * @property {Record<string, string>} kpiLabels
+ * @property {SessionInsightsCounts} counts
+ * @property {SessionInsightsDisplay} display
+ */
 
 /**
  * @param {PicklejarSession} session
- * @returns {{ hallucinationRate: number, deadEndRate: number, reworkRate: number, successSignal: number, qualityScore: number, riskLevel: 'low' | 'medium' | 'high', timelineChips: string[], kpiLabels: Record<string, string> }}
+ * @returns {SessionInsights}
  */
 export function computeSessionInsights(session) {
   const actions = session.actions ?? [];
@@ -73,29 +82,38 @@ export function computeSessionInsights(session) {
     };
   }
 
-  let hallucinated = 0;
-  let inconsistent = 0;
-  let included = 0;
-  for (const a of actions) {
-    const st = a.curationStatus ?? 'default';
-    if (st === 'hallucinated') hallucinated += 1;
-    if (st === 'inconsistent') inconsistent += 1;
-    if (!actionIsExcludedByCuration(a)) included += 1;
-  }
-
   const suggestions = suggestCurationForSession(session);
   const suggestedDeadEndIds = new Set(
     suggestions.filter((s) => s.suggestedStatus === 'dead_end').map((s) => s.id),
   );
 
+  const seenFiles = new Set();
+  let hallucinated = 0;
+  let inconsistent = 0;
+  let included = 0;
   let deadEndActions = 0;
+  let reworkCount = 0;
   for (const a of actions) {
-    if (a.curationStatus === 'dead_end' || suggestedDeadEndIds.has(a.id)) {
-      deadEndActions += 1;
+    const st = a.curationStatus ?? 'default';
+    if (st === 'hallucinated') hallucinated += 1;
+    if (st === 'inconsistent') inconsistent += 1;
+    if (!actionIsExcludedByCuration(a)) included += 1;
+
+    if (st === 'dead_end' || suggestedDeadEndIds.has(a.id)) deadEndActions += 1;
+
+    const files = (a.relatedFiles ?? []).map(normPath).filter(Boolean);
+    if (files.length > 0) {
+      let touchedBefore = false;
+      for (const f of files) {
+        if (seenFiles.has(f)) {
+          touchedBefore = true;
+          break;
+        }
+      }
+      if (touchedBefore) reworkCount += 1;
+      for (const f of files) seenFiles.add(f);
     }
   }
-
-  const reworkCount = countReworkActions(session);
 
   const hallucinationRate = (hallucinated + inconsistent) / total;
   const deadEndRate = deadEndActions / total;
@@ -187,11 +205,11 @@ export function computeSessionInsights(session) {
  */
 
 /**
- * @param {Array<{ agentOrigin: string | null, sessionInsights: ReturnType<typeof computeSessionInsights> }>} rows
+ * @param {Array<{ agentOrigin: string | null, sessionInsights: SessionInsights }>} rows
  * @returns {{ agents: AgentAnalyticsRow[], window: { label: string, fromMs: number | null, toMs: number } }}
  */
 export function computeProjectInsights(rows) {
-  /** @type {Map<string, { sessions: typeof rows[0][] }>} */
+  /** @type {Map<string, { sessions: Array<{ agentOrigin: string | null, sessionInsights: SessionInsights }> }>} */
   const byAgent = new Map();
   for (const row of rows) {
     const key = row.agentOrigin && String(row.agentOrigin).trim() ? String(row.agentOrigin).trim() : 'unknown';
