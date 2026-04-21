@@ -386,6 +386,132 @@
       margin-top: 0.35rem;
     }
 
+    .quality-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 2.5rem;
+      padding: 0.15rem 0.45rem;
+      border-radius: 6px;
+      font-size: 0.625rem;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+    .quality-badge--high { color: var(--err); border-color: color-mix(in srgb, var(--err) 45%, transparent); background: rgba(239,68,68,0.1); }
+    .quality-badge--medium { color: var(--partial); border-color: color-mix(in srgb, var(--partial) 45%, transparent); background: rgba(168,85,247,0.1); }
+    .quality-badge--low { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); background: var(--ok-bg); }
+
+    .insights-kpi-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem 1rem;
+    }
+    @media (max-width: 560px) {
+      .insights-kpi-grid { grid-template-columns: 1fr; }
+    }
+    .insights-kpi {
+      padding: 0.5rem 0;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .insights-kpi:last-child { border-bottom: none; }
+    .insights-kpi__v {
+      font-size: 1.125rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.25rem;
+    }
+    .insights-kpi__k {
+      font-size: 0.6875rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted-2);
+      margin-bottom: 0.35rem;
+    }
+    .insights-kpi__hint {
+      font-size: 0.75rem;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+
+    .insight-chips-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin-bottom: 0.75rem;
+    }
+    .insight-chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.25rem 0.55rem;
+      border-radius: 999px;
+      font-size: 0.6875rem;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      border: 1px solid var(--border);
+      background: var(--surface-hover);
+      color: var(--text);
+    }
+    .insight-chip--warn { border-color: color-mix(in srgb, var(--partial) 50%, transparent); color: var(--partial); }
+    .insight-chip--bad { border-color: color-mix(in srgb, var(--err) 50%, transparent); color: var(--err); }
+
+    .analytics-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+    }
+    .analytics-toolbar label {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.8125rem;
+      color: var(--muted);
+    }
+    .analytics-toolbar select {
+      padding: 0.35rem 0.5rem;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font: inherit;
+      font-size: 0.8125rem;
+    }
+    .analytics-table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface-card);
+    }
+    .analytics-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8125rem;
+    }
+    .analytics-table th,
+    .analytics-table td {
+      padding: 0.5rem 0.65rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .analytics-table th {
+      font-size: 0.6875rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted-2);
+      background: var(--bg);
+    }
+    .analytics-table tr:last-child td { border-bottom: none; }
+    .analytics-table .num { font-variant-numeric: tabular-nums; text-align: right; }
+
     .main-column {
       display: flex;
       flex-direction: column;
@@ -826,6 +952,61 @@
     .toast.show { opacity: 1; transform: translateY(0); }
     .error-text { color: var(--err); }
     .muted { color: var(--muted); }
+
+    .analytics-drawer {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      display: flex;
+      align-items: stretch;
+      justify-content: flex-end;
+      pointer-events: none;
+    }
+    .analytics-drawer:not([hidden]) {
+      pointer-events: auto;
+    }
+    .analytics-drawer[hidden] {
+      display: none !important;
+    }
+    .analytics-drawer__backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.45);
+      border: none;
+      padding: 0;
+      cursor: pointer;
+    }
+    .analytics-drawer__panel {
+      position: relative;
+      width: min(560px, 100vw);
+      max-height: 100%;
+      background: var(--bg-elevated);
+      border-left: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      z-index: 1;
+    }
+    .analytics-drawer__header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border-subtle);
+      flex-shrink: 0;
+    }
+    .analytics-drawer__header h2 {
+      margin: 0;
+      font-size: 0.9375rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+    .analytics-drawer__body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1rem 1.125rem 1.5rem;
+    }
   </style>
 </head>
 <body>
@@ -846,11 +1027,36 @@
         </button>
       </div>
       <span class="header-vdivider" aria-hidden="true"></span>
+      <button type="button" class="btn" id="open-analytics" title="Project-wide analytics by agent">Analytics</button>
       <button type="button" class="icon-btn" id="refresh" title="Refresh" aria-label="Refresh sessions">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
       </button>
     </div>
   </header>
+  <div id="analytics-drawer" class="analytics-drawer" hidden aria-hidden="true">
+    <button type="button" class="analytics-drawer__backdrop" id="analytics-drawer-backdrop" tabindex="-1" aria-label="Close analytics"></button>
+    <div class="analytics-drawer__panel" role="dialog" aria-modal="true" aria-labelledby="analytics-drawer-title">
+      <div class="analytics-drawer__header">
+        <h2 id="analytics-drawer-title">Project analytics</h2>
+        <button type="button" class="icon-btn" id="analytics-drawer-close" aria-label="Close analytics">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="analytics-drawer__body">
+        <div class="analytics-toolbar">
+          <label>Window
+            <select id="analytics-window" aria-label="Analytics time window">
+              <option value="all">All time</option>
+              <option value="30d">Last 30 days</option>
+              <option value="7d">Last 7 days</option>
+            </select>
+          </label>
+          <button type="button" class="btn" id="analytics-refresh">Refresh</button>
+        </div>
+        <div id="analytics-inner"><p class="muted" style="margin:0;font-size:0.8125rem">Open to load analytics.</p></div>
+      </div>
+    </div>
+  </div>
   <div class="layout">
     <aside class="sidebar" id="sidebar"></aside>
     <main class="main-column" id="main">
@@ -888,6 +1094,8 @@
   let timelineFilter = 'all';
   let heartbeatTimer = null;
   let explorerClosed = false;
+  /** @type {{ window: string, data: unknown } | null} */
+  let analyticsCache = null;
 
   const $ = (id) => document.getElementById(id);
   const THEME_KEY = 'picklejar-explorer-theme';
@@ -1049,6 +1257,79 @@
     else if (['discarded', 'hallucinated', 'inconsistent'].includes(row.curationStatus)) c += ' tl-bad';
     if (row.includeInBrainDump === false) c += ' tl-muted';
     return c;
+  }
+
+  /**
+   * @param {string} risk
+   */
+  function qualityBadgeClassForRisk(risk) {
+    if (risk === 'high') return 'quality-badge--high';
+    if (risk === 'medium') return 'quality-badge--medium';
+    return 'quality-badge--low';
+  }
+
+  /**
+   * @param {string[]} chips
+   */
+  function timelineInsightChipsHtml(chips) {
+    if (!chips || !chips.length) {
+      return '<p class="muted" style="margin:0 0 0.75rem;font-size:0.8125rem">No risk flags for this session.</p>';
+    }
+    let html = '<div class="insight-chips-row" role="list">';
+    for (const c of chips) {
+      const warn = /rework|loop/i.test(c);
+      const bad = /low confidence|halluc/i.test(c);
+      const chipCls = bad ? 'insight-chip insight-chip--bad' : warn ? 'insight-chip insight-chip--warn' : 'insight-chip';
+      html += `<span class="${chipCls}" role="listitem">${escapeHtml(c)}</span>`;
+    }
+    html += '</div>';
+    return html;
+  }
+
+  /**
+   * @param {unknown} data
+   */
+  function buildAnalyticsTableHtml(data) {
+    const d = /** @type {{ agents?: unknown[], window?: { label?: string, sessionCount?: number } }} */ (data || {});
+    const agents = Array.isArray(d.agents) ? d.agents : [];
+    const win = d.window || {};
+    const label = win.label != null ? String(win.label) : 'all';
+    const sessCount = typeof win.sessionCount === 'number' ? win.sessionCount : 0;
+    if (!agents.length) {
+      return `<p class="muted" style="margin:0;font-size:0.8125rem">No sessions in window <strong>${escapeHtml(label)}</strong> (${sessCount} included).</p>`;
+    }
+    const pct = (x) => (typeof x === 'number' ? Math.round(x * 100) + '%' : '—');
+    let rows = '';
+    for (const a of agents) {
+      const row = /** @type {{ agentOrigin?: string, sessionCount?: number, avgQualityScore?: number, avgHallucinationRate?: number, avgDeadEndRate?: number, avgReworkRate?: number, avgSuccessSignal?: number }} */ (a);
+      rows += `<tr>
+        <td><span class="agent-badge ${agentBadgeClass(row.agentOrigin || '')}">${escapeHtml(String(row.agentOrigin || 'unknown'))}</span></td>
+        <td class="num">${escapeHtml(String(row.sessionCount ?? 0))}</td>
+        <td class="num">${escapeHtml(String(row.avgQualityScore ?? '—'))}</td>
+        <td class="num">${escapeHtml(pct(row.avgHallucinationRate))}</td>
+        <td class="num">${escapeHtml(pct(row.avgDeadEndRate))}</td>
+        <td class="num">${escapeHtml(pct(row.avgReworkRate))}</td>
+        <td class="num">${escapeHtml(pct(row.avgSuccessSignal))}</td>
+      </tr>`;
+    }
+    return `
+      <p class="muted" style="margin:0 0 0.75rem;font-size:0.8125rem">Window: <strong>${escapeHtml(label)}</strong> · ${sessCount} session(s)</p>
+      <div class="analytics-table-wrap">
+        <table class="analytics-table">
+          <thead>
+            <tr>
+              <th>Agent</th>
+              <th class="num">Sessions</th>
+              <th class="num">Avg Q</th>
+              <th class="num">Halluc.</th>
+              <th class="num">Dead-end</th>
+              <th class="num">Rework</th>
+              <th class="num">Trusted</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
   }
   function buildTimelineRowsHtml() {
     const rows = actionsCache || [];
@@ -1253,6 +1534,7 @@
     summaryCache = null;
     actionsCache = null;
     detailVm = null;
+    analyticsCache = null;
     timelineFilter = 'all';
     renderSidebar();
     setMainContent('<div class="empty-state"><p class="muted">Loading…</p></div>');
@@ -1295,6 +1577,43 @@
     });
   }
 
+  async function loadAnalyticsPanel() {
+    const inner = $('analytics-inner');
+    const sel = $('analytics-window');
+    if (!inner) return;
+    const w = sel && sel.value ? sel.value : 'all';
+    if (analyticsCache && analyticsCache.window === w && analyticsCache.data) {
+      inner.innerHTML = buildAnalyticsTableHtml(analyticsCache.data);
+      return;
+    }
+    inner.innerHTML = '<p class="muted" style="margin:0;font-size:0.8125rem">Loading analytics…</p>';
+    try {
+      const r = await apiFetch('/api/analytics?window=' + encodeURIComponent(w));
+      if (!r.ok) throw new Error('Failed to load analytics');
+      const data = await r.json();
+      analyticsCache = { window: w, data };
+      inner.innerHTML = buildAnalyticsTableHtml(data);
+    } catch (e) {
+      inner.innerHTML = '<p class="error-text" style="margin:0">Failed to load analytics.</p>';
+      toast(String(e.message || e));
+    }
+  }
+
+  function openAnalyticsDrawer() {
+    const d = $('analytics-drawer');
+    if (!d) return;
+    d.hidden = false;
+    d.setAttribute('aria-hidden', 'false');
+    void loadAnalyticsPanel();
+  }
+
+  function closeAnalyticsDrawer() {
+    const d = $('analytics-drawer');
+    if (!d) return;
+    d.hidden = true;
+    d.setAttribute('aria-hidden', 'true');
+  }
+
   function wireDetailTabs() {
     const tabs = document.querySelectorAll('.detail-tab');
     const sum = $('panel-summary');
@@ -1306,6 +1625,34 @@
         if (sum) sum.hidden = id !== 'summary';
         if (tl) tl.hidden = id !== 'timeline';
       });
+    });
+  }
+
+  function wireAnalyticsDrawer() {
+    const openBtn = $('open-analytics');
+    if (openBtn) openBtn.addEventListener('click', () => openAnalyticsDrawer());
+    const closeBtn = $('analytics-drawer-close');
+    if (closeBtn) closeBtn.addEventListener('click', () => closeAnalyticsDrawer());
+    const backdrop = $('analytics-drawer-backdrop');
+    if (backdrop) backdrop.addEventListener('click', () => closeAnalyticsDrawer());
+    const aw = $('analytics-window');
+    if (aw) {
+      aw.addEventListener('change', () => {
+        analyticsCache = null;
+        void loadAnalyticsPanel();
+      });
+    }
+    const ar = $('analytics-refresh');
+    if (ar) {
+      ar.addEventListener('click', () => {
+        analyticsCache = null;
+        void loadAnalyticsPanel();
+      });
+    }
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      const dr = $('analytics-drawer');
+      if (dr && !dr.hidden) closeAnalyticsDrawer();
     });
   }
 
@@ -1354,6 +1701,39 @@
         </div>`
       : '';
 
+    const ins = vm.sessionInsights && typeof vm.sessionInsights === 'object' ? vm.sessionInsights : {};
+    const disp = ins.display && typeof ins.display === 'object' ? ins.display : {};
+    const labels = ins.kpiLabels && typeof ins.kpiLabels === 'object' ? ins.kpiLabels : {};
+    const risk = typeof ins.riskLevel === 'string' ? ins.riskLevel : 'low';
+    const riskTitle =
+      risk === 'high' ? 'High risk' : risk === 'medium' ? 'Medium risk' : 'Low risk';
+    const insightsSection = `
+        <div class="detail-section">
+          <div class="detail-section__label">Session insights · <span class="quality-badge ${qualityBadgeClassForRisk(risk)}" style="vertical-align:middle">${escapeHtml(riskTitle)}</span></div>
+          <div class="insights-kpi-grid">
+            <div class="insights-kpi">
+              <div class="insights-kpi__k">Hallucination / inconsistency</div>
+              <div class="insights-kpi__v">${escapeHtml(String(disp.hallucinationPct ?? '0%'))}</div>
+              <div class="insights-kpi__hint">${escapeHtml(String(labels.hallucination || ''))}</div>
+            </div>
+            <div class="insights-kpi">
+              <div class="insights-kpi__k">Dead-end paths</div>
+              <div class="insights-kpi__v">${escapeHtml(String(disp.deadEndPct ?? '0%'))}</div>
+              <div class="insights-kpi__hint">${escapeHtml(String(labels.deadEnd || ''))}</div>
+            </div>
+            <div class="insights-kpi">
+              <div class="insights-kpi__k">File rework</div>
+              <div class="insights-kpi__v">${escapeHtml(String(disp.reworkPct ?? '0%'))}</div>
+              <div class="insights-kpi__hint">${escapeHtml(String(labels.rework || ''))}</div>
+            </div>
+            <div class="insights-kpi">
+              <div class="insights-kpi__k">Trusted actions</div>
+              <div class="insights-kpi__v">${escapeHtml(String(disp.successPct ?? '100%'))}</div>
+              <div class="insights-kpi__hint">${escapeHtml(String(labels.success || ''))}</div>
+            </div>
+          </div>
+        </div>`;
+
     const summaryPanelHtml = `
       <div class="summary-stack">
         <div class="detail-section detail-section--goal">
@@ -1382,6 +1762,7 @@
             </div>
           </div>
         </div>
+        ${insightsSection}
         ${nextActionSection}
         ${keyFilesSection}
         ${errorSection}
@@ -1389,7 +1770,12 @@
       </div>
     `;
 
+    const tlChips = Array.isArray(ins.timelineChips) ? ins.timelineChips : [];
     const timelinePanelHtml = `
+      <div class="detail-section" style="margin-bottom:0.75rem;padding:0.75rem 1rem">
+        <div class="detail-section__label">Signals</div>
+        ${timelineInsightChipsHtml(tlChips)}
+      </div>
       <div class="tl-filter-bar" id="tl-filter-bar" role="group" aria-label="Timeline filters">
         <span class="tl-filter-bar__label">Show</span>
         <button type="button" class="tl-filter-btn" data-filter="all" aria-pressed="true">All</button>
@@ -1505,6 +1891,7 @@
 
   initTheme();
   startHeartbeat();
+  wireAnalyticsDrawer();
   loadSessions().catch((e) => {
     $('sidebar').innerHTML = '<p class="error-text" style="padding:1rem 0.875rem;font-size:0.8125rem">' + escapeHtml(String(e.message || e)) + '</p>';
   });

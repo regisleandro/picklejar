@@ -3,6 +3,7 @@
 import { listSnapshots, loadSnapshot, listSnapshotFiles } from './snapshot.js';
 import { deriveSessionTitle } from './list-summary.js';
 import { summarizeCurationStats } from './curation.js';
+import { computeSessionInsights, computeProjectInsights, sessionMatchesWindow } from './analytics.js';
 
 /**
  * @param {PicklejarSession} session
@@ -65,6 +66,8 @@ export function buildSessionViewModel(session, snapshotsCount) {
       ? String(session.agentOrigin).trim()
       : null;
 
+  const sessionInsights = computeSessionInsights(session);
+
   return {
     sessionId: session.sessionId,
     title: deriveSessionTitle(session),
@@ -80,6 +83,7 @@ export function buildSessionViewModel(session, snapshotsCount) {
     decisions: (session.decisions ?? []).map((d) => d.description),
     lastPlannedAction: session.lastPlannedAction ? String(session.lastPlannedAction) : null,
     curationStats: summarizeCurationStats(session),
+    sessionInsights,
   };
 }
 
@@ -132,4 +136,35 @@ export async function listSessions(projectDir) {
 
   out.sort((a, b) => b.updatedAt - a.updatedAt);
   return out;
+}
+
+/**
+ * Aggregated analytics for the project, optionally filtered by time window.
+ * @param {string} projectDir
+ * @param {'7d' | '30d' | 'all'} [window]
+ */
+export async function getProjectAnalytics(projectDir, window = 'all') {
+  const sessions = await listSessions(projectDir);
+  const filtered = sessions.filter((s) => sessionMatchesWindow(s.updatedAt, window));
+  const base = computeProjectInsights(
+    filtered.map((s) => ({
+      agentOrigin: s.agentOrigin,
+      sessionInsights: s.sessionInsights,
+    })),
+  );
+  const now = Date.now();
+  const day = 24 * 60 * 60 * 1000;
+  let fromMs = null;
+  let label = 'all';
+  if (window === '7d') {
+    fromMs = now - 7 * day;
+    label = '7d';
+  } else if (window === '30d') {
+    fromMs = now - 30 * day;
+    label = '30d';
+  }
+  return {
+    ...base,
+    window: { label, fromMs, toMs: now, sessionCount: filtered.length },
+  };
 }

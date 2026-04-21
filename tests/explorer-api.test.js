@@ -93,6 +93,17 @@ describe('explorer api', () => {
     expect(data.length).toBe(1);
     expect(data[0].sessionId).toBe('api-sess');
     expect(data[0].goal).toBe('API test goal');
+    expect(data[0].sessionInsights).toBeDefined();
+    expect(typeof data[0].sessionInsights.qualityScore).toBe('number');
+  });
+
+  it('GET /api/analytics returns agent aggregates', async () => {
+    const { status, body } = await httpGet(`http://127.0.0.1:${port}/api/analytics?window=all`);
+    expect(status).toBe(200);
+    const data = JSON.parse(body);
+    expect(Array.isArray(data.agents)).toBe(true);
+    expect(data.window).toBeDefined();
+    expect(data.window.sessionCount).toBeGreaterThanOrEqual(1);
   });
 
   it('GET / serves HTML', async () => {
