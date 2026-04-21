@@ -2,18 +2,22 @@
  * Best-effort agent origin detection for hook payloads.
  *
  * Preference order:
- * 1. Explicit override via PICKLEJAR_AGENT_ORIGIN
- * 2. Payload shape that is unique to an integration
- * 3. Hook environment heuristics
+ * 1. Payload shape unique to an integration (authoritative — emitted by the
+ *    actual caller, so it cannot be stale the way a baked-in env override can
+ *    be when one IDE inherits another IDE's hook file; e.g. Cursor fires
+ *    `.claude/settings.json` hooks with a Cursor-style payload).
+ * 2. Explicit override via PICKLEJAR_AGENT_ORIGIN.
+ * 3. Hook environment heuristics.
  *
  * @param {Record<string, unknown>} [payload]
  * @returns {string | undefined}
  */
 export function detectAgentOrigin(payload = {}) {
-  const explicit = normalizeAgentOrigin(process.env.PICKLEJAR_AGENT_ORIGIN);
-  if (explicit) return explicit;
-
   const any = /** @type {Record<string, any>} */ (payload ?? {});
+
+  if (any.cursor_version != null || any.cursorVersion != null) {
+    return 'cursor';
+  }
 
   if (
     any.hookName === 'TaskStart' ||
@@ -25,8 +29,9 @@ export function detectAgentOrigin(payload = {}) {
     return 'cline';
   }
 
-  // Env-var checks come before payload-shape checks because Cursor payloads
-  // also carry `conversation_id`, which would otherwise be misidentified as Copilot.
+  const explicit = normalizeAgentOrigin(process.env.PICKLEJAR_AGENT_ORIGIN);
+  if (explicit) return explicit;
+
   if (process.env.CURSOR_PROJECT_DIR || process.env.CURSOR_TRANSCRIPT_PATH) {
     return 'cursor';
   }

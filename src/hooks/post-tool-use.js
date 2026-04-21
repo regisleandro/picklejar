@@ -129,7 +129,7 @@ async function main() {
 
   let session = await loadSession(projectDir, sessionId);
   if (!session) session = createSession(sessionId, projectDir);
-  if (!session.agentOrigin && agentOrigin) {
+  if (agentOrigin) {
     session.agentOrigin = agentOrigin;
   }
 

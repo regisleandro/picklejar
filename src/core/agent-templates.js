@@ -5,7 +5,7 @@ import { claudeHooksBlock } from './init-templates.js';
  * @returns {Record<string, unknown>}
  */
 export function cursorPicklejarHooksDoc() {
-  const cmd = 'node .picklejar/hooks/run-hook.js';
+  const cmd = 'PICKLEJAR_AGENT_ORIGIN="cursor" node .picklejar/hooks/run-hook.js';
   return {
     version: 1,
     hooks: {
