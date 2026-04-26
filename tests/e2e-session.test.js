@@ -129,6 +129,14 @@ describe('e2e', () => {
     expect(out).toContain('resume');
   });
 
+  it('prints help successfully when called without arguments', async () => {
+    const { code, out, err } = await runCli([], process.cwd());
+    expect(code).toBe(0);
+    expect(err).toBe('');
+    expect(out).toContain('Usage: picklejar');
+    expect(out).toContain('Commands:');
+  });
+
   it('init creates run-hook and settings with both resume and startup matchers', async () => {
     const { code, err } = await runCli(['init', proj], process.cwd());
     expect(code).toBe(0);

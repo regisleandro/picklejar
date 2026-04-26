@@ -736,4 +736,8 @@ cleanCmd.action(async (dir) => {
 registerExploreCommand(program);
 registerSummaryCommand(program);
 
-program.parseAsync(process.argv);
+if (process.argv.length <= 2) {
+  program.outputHelp();
+} else {
+  await program.parseAsync(process.argv);
+}
