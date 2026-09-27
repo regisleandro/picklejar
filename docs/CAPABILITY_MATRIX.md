@@ -16,6 +16,7 @@ Integrations are split into:
 | `continue` | hooks | Yes | Yes | `CLAUDE.md` and `AGENTS.md` | launches `cn` | Uses Claude-compatible `.continue/settings.json` |
 | `copilot` | hooks | Partial / build-dependent | Yes | `AGENTS.md` | launches `copilot` | Installs `.github/hooks/picklejar-agent.json` plus scripts |
 | `cline` | hooks | Yes | Yes | `CLAUDE.md` and `AGENTS.md` | prints IDE guidance | Installs `.clinerules/hooks/*` |
+| `codex` | instructions | No | Via `resume` / `open` | `AGENTS.md` | launches `codex` | Codex CLI handoff via shared resume context |
 | `opencode` | instructions | No | Via `resume` / `open` | `AGENTS.md` | launches `opencode` | No hook parity in core |
 | `kilo` | instructions | No | Via `resume` / `open` | `AGENTS.md` | launches `kilo` | OpenCode-compatible workflow |
 | `antigravity` | instructions | No | Via `resume` / `open` | `.agent/picklejar-resume.md` | prints IDE guidance | IDE-based flow |
@@ -48,4 +49,4 @@ Where the host agent supports it, Picklejar handles these lifecycle points:
 - exported and resumed brain dumps are curation-aware when action metadata is present
 - Explorer handoff uses the same resume-service path as `picklejar open`
 - local Explorer sessions use an ephemeral token; remote Explorer mode prints the token explicitly
-- OpenAI Codex is not part of the current integration scope
+- Codex uses the same shared handoff flow as the other instructions-track agents

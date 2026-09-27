@@ -22,6 +22,7 @@ export const AGENT_IDS = [
   'copilot',
   'cline',
   'continue',
+  'codex',
   'opencode',
   'kilo',
   'antigravity',
@@ -35,6 +36,7 @@ export const CAPABILITIES = {
   copilot: { track: 'hooks', hooks: true, instructions: true, notes: '.github/hooks/picklejar-agent.json' },
   cline: { track: 'hooks', hooks: true, instructions: true, notes: '.clinerules/hooks/*' },
   continue: { track: 'hooks', hooks: true, instructions: true, notes: '.continue/settings.json (Claude-compatible)' },
+  codex: { track: 'instructions', hooks: false, instructions: true, notes: 'AGENTS.md + codex CLI' },
   opencode: { track: 'instructions', hooks: false, instructions: true, notes: 'AGENTS.md + opencode CLI' },
   kilo: { track: 'instructions', hooks: false, instructions: true, notes: 'AGENTS.md + kilo CLI (OpenCode-fork config)' },
   antigravity: { track: 'instructions', hooks: false, instructions: true, notes: '.agent/picklejar-resume.md MVP' },
@@ -110,6 +112,7 @@ export async function runAgentInit(agent, projectDir, pkgRoot) {
       break;
     }
     case 'opencode':
+    case 'codex':
     case 'kilo':
     case 'antigravity':
     case 'aider':
@@ -151,6 +154,7 @@ export async function injectResumeContext(agent, projectDir) {
       await writeResumeToAgentsMd(projectDir, brain);
       break;
     case 'opencode':
+    case 'codex':
     case 'kilo':
       await writeResumeToAgentsMd(projectDir, brain);
       break;
@@ -261,6 +265,12 @@ export async function spawnAgent(agent, projectDir, spawnOpts = {}) {
     }
     case 'opencode': {
       await spawnChecked('opencode', [], childSpawnOpts, detach, (child) => {
+        if (!detach) onExit(child);
+      });
+      break;
+    }
+    case 'codex': {
+      await spawnChecked('codex', [], childSpawnOpts, detach, (child) => {
         if (!detach) onExit(child);
       });
       break;

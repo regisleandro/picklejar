@@ -159,6 +159,33 @@ describe('explorer api', () => {
     );
   });
 
+  it('POST /api/sessions/:id/open accepts codex handoff', async () => {
+    await new Promise((resolve) => server.close(() => resolve(undefined)));
+    const onOpenRequest = vi.fn().mockResolvedValue(undefined);
+    server = await createExplorerServer(tmpDir, { onOpenRequest });
+    await new Promise((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', () => resolve(undefined));
+    });
+    port = /** @type {import('node:net').AddressInfo} */ (server.address()).port;
+
+    const { status, body } = await httpPost(`http://127.0.0.1:${port}/api/sessions/api-sess/open`, {
+      agent: 'codex',
+      profile: 'balanced',
+    });
+
+    expect(status).toBe(200);
+    expect(JSON.parse(body)).toEqual({ success: true, agent: 'codex', terminalHandoff: true });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(onOpenRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectDir: tmpDir,
+        sessionId: 'api-sess',
+        agent: 'codex',
+      }),
+    );
+  });
+
   it('ephemeral explorer requires token and closes after close beacon', async () => {
     await new Promise((resolve) => server.close(() => resolve(undefined)));
     const shutdownReasons = [];
