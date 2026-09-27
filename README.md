@@ -7,7 +7,7 @@ Picklejar records tool activity under `.picklejar/snapshots/`, derives a trusted
 Supported agents are split into two tracks:
 
 - Hooks track: Claude Code, Cursor, Continue CLI, GitHub Copilot CLI, Cline
-- Instructions track: OpenCode, Kilo, Antigravity, Aider
+- Instructions track: Codex, OpenCode, Kilo, Antigravity, Aider
 
 Details by agent live in [docs/CAPABILITY_MATRIX.md](docs/CAPABILITY_MATRIX.md).
 
@@ -33,6 +33,7 @@ picklejar init
 # explicit agent
 picklejar init cursor
 picklejar init continue
+picklejar init codex
 picklejar init copilot
 picklejar init cline
 
@@ -220,7 +221,7 @@ Default `.picklejar/config.json` values:
 Resume context is injected into these files depending on the target:
 
 - `CLAUDE.md` for Claude-compatible flows
-- `AGENTS.md` for OpenCode, Kilo, Copilot, and some compatibility paths
+- `AGENTS.md` for Codex, OpenCode, Kilo, Copilot, and some compatibility paths
 - `.agent/picklejar-resume.md` for Antigravity
 - `CONVENTIONS.md` for Aider
 

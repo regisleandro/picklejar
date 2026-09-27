@@ -116,9 +116,18 @@ describe('e2e', () => {
   });
 
   it('capabilities prints JSON', async () => {
-    const { code, out } = await runCli(['capabilities', 'claude'], process.cwd());
+    const { code, out } = await runCli(['capabilities', 'codex'], process.cwd());
     expect(code).toBe(0);
-    expect(out).toContain('"hooks"');
+    expect(out).toContain('"instructions"');
+    expect(out).toContain('"codex"');
+  });
+
+  it('init codex sets up the shared runtime for instruction handoff', async () => {
+    const { code, err } = await runCli(['init', 'codex', proj], process.cwd());
+    expect(code).toBe(0);
+    expect(err).toBe('');
+    await fs.access(path.join(proj, '.picklejar', 'config.json'));
+    await fs.access(path.join(proj, '.picklejar', 'hooks', 'run-hook.js'));
   });
 
   it('help no longer exposes curate', async () => {

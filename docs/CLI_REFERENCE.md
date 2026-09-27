@@ -15,6 +15,7 @@ Supported agent IDs:
 - `copilot`
 - `cline`
 - `continue`
+- `codex`
 - `opencode`
 - `kilo`
 - `antigravity`

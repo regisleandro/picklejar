@@ -138,6 +138,25 @@ describe('resume-service', () => {
     vi.spyOn(registry, 'injectResumeContext').mockResolvedValue(true);
   });
 
+  it('injectResumeContext writes resume context for codex to AGENTS.md', async () => {
+    const root = picklejarRoot(tmpDir);
+    await fs.mkdir(root, { recursive: true });
+    const brain = '# [PICKLEJAR RESUME] codex\n> Session: codex-handoff\n';
+    await fs.writeFile(resumeContextPath(tmpDir), brain, 'utf8');
+
+    vi.restoreAllMocks();
+    const injected = await registry.injectResumeContext('codex', tmpDir);
+    expect(injected).toBe(true);
+
+    const agents = await fs.readFile(path.join(tmpDir, 'AGENTS.md'), 'utf8');
+    expect(agents).toContain('codex-handoff');
+    await expect(fs.access(resumeContextPath(tmpDir))).rejects.toThrow();
+    await expect(fs.access(forceResumePath(tmpDir))).rejects.toThrow();
+
+    vi.spyOn(registry, 'spawnAgent').mockImplementation(() => {});
+    vi.spyOn(registry, 'injectResumeContext').mockResolvedValue(true);
+  });
+
   it('openSessionInAgent calls inject and spawn without subprocess CLI', async () => {
     const s = createSession('rs4', tmpDir);
     s.goal = 'Open test';
@@ -155,5 +174,24 @@ describe('resume-service', () => {
 
     expect(registry.injectResumeContext).toHaveBeenCalledWith('claude', tmpDir);
     expect(registry.spawnAgent).toHaveBeenCalledWith('claude', tmpDir, { detach: false });
+  });
+
+  it('openSessionInAgent supports codex handoff', async () => {
+    const s = createSession('rs5', tmpDir);
+    s.goal = 'Codex open test';
+    await saveSnapshot(s);
+
+    const opts = normalizeBrainDumpOptions({ curationProfile: 'balanced' });
+    await openSessionInAgent({
+      projectDir: tmpDir,
+      sessionId: 'rs5',
+      agent: 'codex',
+      maxTokens: 50_000,
+      brainDumpOpts: opts,
+      session: s,
+    });
+
+    expect(registry.injectResumeContext).toHaveBeenCalledWith('codex', tmpDir);
+    expect(registry.spawnAgent).toHaveBeenCalledWith('codex', tmpDir, { detach: false });
   });
 });
